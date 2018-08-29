@@ -1,0 +1,154 @@
+---
+title: "Topic Modeling Analysis"
+author: "Rachel McKane"
+date: "August 28, 2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+rm(list=ls()) #clears variables in global environment 
+#dev.off() #clears plots in history
+
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(root.dir = "  ") # Set your root directory 
+
+getwd()
+```
+
+
+```{r}
+library("tidyverse") #includes dplyr, ggplot2, tidyr, purr, readr, and tibble
+library("broom") #has the tidy fn to convert non-tidy objects into tidy objects
+library("SnowballC")
+library("stringr") #has str_extract fn to avoid some of the strange utf-8 text encodings
+library("tm") #has a lot of text cleaning fns, like remove numbers and punctuation; incl. NLP and slam
+library("tidytext") #has unnest_tokens fn; includes SnowballC; #has tidy fn to convert topics into tidy format
+library("topicmodels")
+library("wordcloud")
+library("quanteda") #searching for specific words
+library("pdftools") #reading in pdfs
+```
+
+###Document Term Matrix -- Water Plans
+
+Before we conduct the topic modeling, we first need to construct the DTM
+
+```{r}
+
+
+WaterPlans_text <- readRDS(file = "~/WaterPlans_text.rds")
+
+WaterPlans.dtm <- DocumentTermMatrix(WaterPlans_text, 
+                                     control = list(stopwords = TRUE,
+                                                    stemming = TRUE,
+                                                    bounds = list(global = c(3, Inf))))
+
+WaterPlans.dtm 
+
+inspect(WaterPlans.dtm[1:10,]) 
+
+
+#make sure there are no zeros in the dtm
+raw.sum <- apply(WaterPlans.dtm,1,FUN=sum) 
+
+raw.sum #no zeros
+
+```
+
+
+
+
+Conducting the Topic Modeling and creating graphics 
+
+```{r}
+
+Topics_Exploration <- function(No_Topics) {
+  waterplan_lda <- LDA(WaterPlans.dtm, k = No_Topics, control = list(seed = 1234))
+  
+
+  #convert into a tidy object
+  waterplan_topics <- tidy(waterplan_lda, matrix = "beta")
+  
+  plot1 <- drought_topics %>%
+    group_by(topic) %>%
+    top_n(5, beta) %>%
+    ungroup() %>%
+    arrange(topic, -beta) %>%
+    mutate(term = reorder(term, beta)) %>%
+    ggplot(aes(term, beta, fill = factor(topic))) +
+    geom_col(show.legend = FALSE) +
+    facet_wrap(~ topic, scales = "free") +
+    coord_flip()
+  print(plot1)
+  
+  return(drought_lda)  
+}
+
+
+
+WaterPlanDocs_2LDA <- Topics_Exploration(No_Topics=2)
+WaterPlanDocs_2LDA <- Topics_Exploration(No_Topics=3)
+WaterPlanDocs_2LDA <- Topics_Exploration(No_Topics=4)
+WaterPlanDocs_2LDA <- Topics_Exploration(No_Topics=5)
+
+
+
+```
+
+
+Now do the same thing with the drought plans
+
+```{r}
+
+
+DroughtPlans_text <- readRDS(file = "~/DoughtPlans_text.rds")
+
+DroughtPlans.dtm <- DocumentTermMatrix(DroughtPlans_text, 
+                                     control = list(stopwords = TRUE,
+                                                    stemming = TRUE,
+                                                    bounds = list(global = c(3, Inf))))
+
+DroughtPlans.dtm 
+
+inspect(DroughtPlans.dtm[1:10,]) 
+
+
+#make sure there are no zeros in the dtm
+raw.sum <- apply(DroughtPlans.dtm,1,FUN=sum) 
+
+raw.sum #no zeros
+
+Topics_Exploration <- function(No_Topics) {
+  droughtplan_lda <- LDA(DroughtPlans.dtm, k = No_Topics, control = list(seed = 1234))
+  
+
+  #convert into a tidy object
+  droughtplan_topics <- tidy(droughtplan_lda, matrix = "beta")
+  
+  plot1 <- drought_topics %>%
+    group_by(topic) %>%
+    top_n(5, beta) %>%
+    ungroup() %>%
+    arrange(topic, -beta) %>%
+    mutate(term = reorder(term, beta)) %>%
+    ggplot(aes(term, beta, fill = factor(topic))) +
+    geom_col(show.legend = FALSE) +
+    facet_wrap(~ topic, scales = "free") +
+    coord_flip()
+  print(plot1)
+  
+  return(drought_lda)  
+}
+
+
+
+DroughtPlanDocs_2LDA <- Topics_Exploration(No_Topics=2)
+DroughtPlanDocs_2LDA <- Topics_Exploration(No_Topics=3)
+DroughtPlanDocs_2LDA <- Topics_Exploration(No_Topics=4)
+DroughtPlanDocs_2LDA <- Topics_Exploration(No_Topics=5)
+
+
+
+
+
+```
