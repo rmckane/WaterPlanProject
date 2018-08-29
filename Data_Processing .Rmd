@@ -1,0 +1,175 @@
+---
+title: "Water and Drought Plans"
+author: "Rachel McKane"
+date: "August 28, 2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+rm(list=ls()) #clears variables in global environment :-)
+#dev.off() #clears plots in history
+
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(root.dir = "/Users/rachelmckane/Desktop/Plans")
+
+getwd()
+```
+
+
+```{r}
+library("tidyverse") #includes dplyr, ggplot2, tidyr, purr, readr, and tibble
+library("broom") #has the tidy fn to convert non-tidy objects into tidy objects
+library("SnowballC")
+library("stringr") #has str_extract fn to avoid some of the strange utf-8 text encodings
+library("tm") #has a lot of text cleaning fns, like remove numbers and punctuation; incl. NLP and slam
+library("tidytext") #has unnest_tokens fn; includes SnowballC; #has tidy fn to convert topics into tidy format
+library("topicmodels")
+library("wordcloud")
+library("quanteda")
+library("pdftools")
+```
+
+
+###Reading in the Water Plans 
+
+
+```{r}
+read <- readPDF(control = list(text = "-layout")) #define engine
+files <- list.files(path = "/Users/rachelmckane/Desktop/Plans2/", pattern = "pdf$")
+files_path <- paste("/Users/rachelmckane/Desktop/Plans2/",files,sep="")
+WaterPlans_text <- VCorpus(URISource(files_path), 
+                            readerControl = list(reader = read))
+
+
+class(WaterPlans_text) 
+```
+
+###Clean up the VCorpus (Water Plans)
+
+This is the code we use to clean up all of the PDF Files. We should think about the exact stopwords we want to take out. 
+
+```{r}
+#define all stop words (including specific ones we add, such as state names)
+stpwrds <- tm::stopwords("SMART") #list of stopwords in the tm pkg for the SMART option
+addwords <- c( "state", "water","plan", "colorado") 
+states <- read.csv("/Users/rachelmckane/Desktop/State_List.csv", stringsAsFactors = FALSE)
+all_stopwords <- c(stpwrds,addwords,states[['State']],states[['State_Abbreviation']]) #merge the two lists
+all_stopwords <- tolower(all_stopwords) #make all state names/abbrevs lowercase
+rm(stpwrds,addwords,states) 
+  tm_map(removeNumbers) %>% #Remove numbers
+  tm_map(stripWhitespace) #Remove extra whitespaces
+  
+  
+  (f_weirdos <- content_transformer(function(x, pattern) gsub(pattern, "", x)))
+
+#now do some special corpus cleaning...order of functions matters!
+WaterPlans_text_clean <- WaterPlans_text %>%
+  tm_map(f_weirdos,"[^[:alnum:] ]") %>% #gets rid of form feed (/f) and euro symbol, but not a accents
+  tm_map(f_weirdos,"â") %>% #remove accents
+  tm_map(content_transformer(tolower)) %>% #Switch to lower case
+  tm_map(removeWords, all_stopwords) %>% #remove stopwords; want to remove stopwords 1st because they contain punctuation
+  tm_map(removePunctuation) %>% #Remove punctuation marks 
+  tm_map(removeNumbers) %>% #Remove numbers
+  tm_map(stripWhitespace) #Remove white space 
+  
+  
+```
+
+
+###TDM (Water Plans)
+Create a term document matrix of the pdf files for further analysis
+
+```{r}
+#Construct the dTM
+WaterPlans.dtm <- DocumentTermMatrix(WaterPlans_text_clean, 
+                                     control = list(stopwords = TRUE,
+                                                    stemming = TRUE,
+                                                    bounds = list(global = c(3, Inf))))
+
+WaterPlans.dtm 
+
+inspect(WaterPlans.dtm[1:10,]) 
+
+
+#make sure there are no zeros in the dtm
+raw.sum <- apply(WaterPlans.dtm,1,FUN=sum) 
+
+raw.sum #no zeros
+
+```
+
+
+###Reading in the Drought Plans 
+
+```{r}
+
+
+#id <- "1eSu8mBDwT5C71X_0YhXHeTJ-Jsu6yozV" # google file ID
+#industry<-read_csv(sprintf("https://docs.google.com/uc?id=%s&export=download", id), skip =1 ) 
+
+#The water plans are on google at the id link above. It would be cool if we could figure how to read them in from that shareable link. 
+
+
+read <- readPDF(control = list(text = "-layout")) #define engine
+files <- list.files(path = "/Users/rachelmckane/Desktop/Plans2/", pattern = "pdf$")
+files_path <- paste("/Users/rachelmckane/Desktop/Plans2/",files,sep="")
+DroughtPlans_text <- VCorpus(URISource(files_path), 
+                            readerControl = list(reader = read))
+
+
+class(DroughtPlans_text) 
+```
+
+###Clean up the VCorpus (Drought Plans)
+
+```{r}
+#define all stop words (including specific ones we add, such as state names)
+stpwrds <- tm::stopwords("SMART") #list of stopwords in the tm pkg for the SMART option
+addwords <- c( "state", "water","plan", "colorado", "drought") 
+states <- read.csv("/Users/rachelmckane/Desktop/State_List.csv", stringsAsFactors = FALSE)
+all_stopwords <- c(stpwrds,addwords,states[['State']],states[['State_Abbreviation']]) #merge the two lists
+all_stopwords <- tolower(all_stopwords) #make all state names/abbrevs lowercase
+rm(stpwrds,addwords,states) 
+  tm_map(removeNumbers) %>% #Remove numbers
+  tm_map(stripWhitespace) #Remove extra whitespaces
+  
+  
+  (f_weirdos <- content_transformer(function(x, pattern) gsub(pattern, "", x)))
+
+#now do some special corpus cleaning...order of functions matters!
+DroughtPlans_text_clean <- WaterPlans_text %>%
+  tm_map(f_weirdos,"[^[:alnum:] ]") %>% #gets rid of form feed (/f) and euro symbol, but not a accents
+  tm_map(f_weirdos,"â") %>% #remove accents
+  tm_map(content_transformer(tolower)) %>% #Switch to lower case
+  tm_map(removeWords, all_stopwords) %>% #remove stopwords; want to remove stopwords 1st because they contain punctuation
+  tm_map(removePunctuation) %>% #Remove punctuation marks 
+  tm_map(removeNumbers) %>% #Remove numbers
+  tm_map(stripWhitespace) #Remove white space 
+  
+  
+```
+
+
+###TDM (Drought Plans)
+
+
+```{r}
+#Construct the dTM
+DroughtPlans.dtm <- DocumentTermMatrix(WaterPlans_text_clean, 
+                                     control = list(stopwords = TRUE,
+                                                    stemming = TRUE,
+                                                    bounds = list(global = c(3, Inf))))
+
+DroughtPlans.dtm 
+
+inspect(DroughtPlans.dtm[1:10,]) 
+
+
+#make sure there are no zeros in the dtm
+raw.sum <- apply(DroughtPlans.dtm,1,FUN=sum) 
+
+raw.sum #no zeros
+
+```
+
+
