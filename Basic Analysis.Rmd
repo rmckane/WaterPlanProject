@@ -1,0 +1,179 @@
+---
+title: "Water and Drought Plans"
+author: "Rachel McKane"
+date: "August 28, 2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+rm(list=ls()) #clears variables in global environment 
+#dev.off() #clears plots in history
+
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(root.dir = "  ") # Set your root directory 
+
+getwd()
+```
+
+```{r}
+library("tidyverse") #includes dplyr, ggplot2, tidyr, purr, readr, and tibble
+library("broom") #has the tidy fn to convert non-tidy objects into tidy objects
+library("SnowballC")
+library("stringr") #has str_extract fn to avoid some of the strange utf-8 text encodings
+library("tm") #has a lot of text cleaning fns, like remove numbers and punctuation; incl. NLP and slam
+library("tidytext") #has unnest_tokens fn; includes SnowballC; #has tidy fn to convert topics into tidy format
+library("topicmodels")
+library("wordcloud")
+library("quanteda") #searching for specific words
+library("pdftools") #reading in pdfs
+```
+
+
+###Read in the RDS file with the Corpus of Water Plans
+
+For this analysis we are working with the texts to search specific words and make visualizations. 
+Start by reading in the RDS file that has all fo the clean text files. 
+
+```{r}
+
+WaterPlans_text <- readRDS(file = "~/WaterPlans_text.rds")
+
+```
+
+
+###Total Terms with Stopwords for Water Plans
+
+This is to find the total terms within each document including the stopwords. For word searching, it is easier to use the quanteda package so we start by converting our VCorpus (from the tm package) to a quanteda corpus. 
+
+```{r}
+
+WaterPlanCorpus <- corpus(WaterPlans_text)
+total_terms_raw <- summary(WaterPlanCorpus)
+total_terms_raw_words <- total_terms_raw$Tokens
+
+
+```
+
+### Word Searches for Water Plans
+
+Now we can search for specific words and tidy up the data to make a table
+
+```{r}
+
+#Sustainability
+sust<- kwic(WaterPlanCorpus, "sustainability") 
+sust<- table(sust$docname) %>% tidy()
+sust<- sust %>% dplyr::rename(State = "Var1", Sustainability = "Freq")
+
+
+#Climate Change
+cc<- kwic(WaterPlanCorpus, c(phrase("climate change")))
+cc<- table(cc$docname) %>% tidy()
+cc<- cc %>% dplyr::rename(State = "Var1", Climate_Change = "Freq")
+
+#Scarcity 
+scar<- kwic(WaterPlanCorpus, "scarcity") 
+scar<- table(scar$docname) %>% tidy()
+scar<- scar %>% dplyr::rename(State = "Var1", Scarcity = "Freq")
+
+
+#Climate Varaibility 
+cv<- kwic(WaterPlanCorpus, c(phrase("climate variability")))
+cv<- table(cv$docname) %>% tidy()
+cv<- cv %>% dplyr::rename(State = "Var1", Climate_Variability = "Freq")
+
+
+#Extreme Events
+ee<- kwic(WaterPlanCorpus, c(phrase("extreme events")))
+ee<- table(ee$docname) %>% tidy()
+ee<- ee %>% dplyr::rename(State = "Var1", Extreme_Events = "Freq")
+
+#Quality
+qq<- kwic(WaterPlanCorpus, c(phrase("quality")))
+qq<- table(qq$docname) %>% tidy()
+qq<- qq %>% dplyr::rename(State = "Var1", Quality = "Freq")
+
+
+```
+
+### Cleaning up Word Data for Water Plans 
+
+Now we can clean up our word data and standardize our findings by the total number of words in each doument.
+
+```{r}
+
+word_data_waterplans <- total_terms %>% left_join(cc) %>% left_join(sust) %>% 
+  left_join(scar) %>% left_join(cv) %>% left_join(ee) %>% left_join(qq)
+
+word_data_waterplans <- word_data_waterplans %>%
+  mutate(Climate_Change_Percent = Climate_Change/Total_Words*100,
+         Sustainability_Percent = Sustainability/Total_Words*100,
+         Climate_Variabiliyt_Percent = Climate_Variability/Total_Words*100,
+         Extreme_Events_Percent = Extreme_Events/Total_Words*100,
+         Quality_Percent = Quality/Total_Words*100)
+
+write.csv(word_data_waterplans,"~/word_data_waterplans.csv")
+
+```
+
+
+Now, we can do the same thing with the drought plans
+
+
+```{r}
+
+DroughtPlans_text <- readRDS(file = "~/DroughtPlans_text.rds")
+
+
+DroughtPlanCorpus <- corpus(DroughtPlans_text)
+total_terms_raw <- summary(DroughtPlanCorpus)
+total_terms_raw_words <- total_terms_raw$Tokens
+
+#Sustainability
+sust<- kwic(DroughtPlanCorpus, "sustainability") 
+sust<- table(sust$docname) %>% tidy()
+sust<- sust %>% dplyr::rename(State = "Var1", Sustainability = "Freq")
+
+
+#Climate Change
+cc<- kwic(DroughtPlanCorpus, c(phrase("climate change")))
+cc<- table(cc$docname) %>% tidy()
+cc<- cc %>% dplyr::rename(State = "Var1", Climate_Change = "Freq")
+
+#Scarcity 
+scar<- kwic(DroughtPlanCorpus, "scarcity") 
+scar<- table(scar$docname) %>% tidy()
+scar<- scar %>% dplyr::rename(State = "Var1", Scarcity = "Freq")
+
+
+#Climate Varaibility 
+cv<- kwic(DroughtPlanCorpus, c(phrase("climate variability")))
+cv<- table(cv$docname) %>% tidy()
+cv<- cv %>% dplyr::rename(State = "Var1", Climate_Variability = "Freq")
+
+
+#Extreme Events
+ee<- kwic(DroughtPlanCorpus, c(phrase("extreme events")))
+ee<- table(ee$docname) %>% tidy()
+ee<- ee %>% dplyr::rename(State = "Var1", Extreme_Events = "Freq")
+
+#Quality
+qq<- kwic(DroughtPlanCorpus, c(phrase("quality")))
+qq<- table(qq$docname) %>% tidy()
+qq<- qq %>% dplyr::rename(State = "Var1", Quality = "Freq")
+
+
+word_data_droughtpans <- total_terms %>% left_join(cc) %>% left_join(sust) %>% 
+  left_join(scar) %>% left_join(cv) %>% left_join(ee) %>% left_join(qq)
+
+word_data_droughtpans  <- word_data_droughtpans  %>%
+  mutate(Climate_Change_Percent = Climate_Change/Total_Words*100,
+         Sustainability_Percent = Sustainability/Total_Words*100,
+         Climate_Variabiliyt_Percent = Climate_Variability/Total_Words*100,
+         Extreme_Events_Percent = Extreme_Events/Total_Words*100,
+         Quality_Percent = Quality/Total_Words*100)
+
+write.csv(word_data_drouggtplans,"~/word_data_droughtplans.csv")
+
+
+```
