@@ -31,8 +31,8 @@ library("pdftools") #reading in pdfs
 
 ###Read in the RDS file with the Corpus of Water Plans
 
-For this analysis we are working with the texts to search specific words and make visualizations. 
-Start by reading in the RDS file that has all fo the clean text files. 
+For this analysis we are working with the water plans in text format to search specific words. 
+Start by reading in the RDS file that contains all of the clean text files.  
 
 ```{r}
 
@@ -43,7 +43,7 @@ WaterPlans_text <- readRDS(file = "~/WaterPlans_text.rds")
 
 ###Total Terms with Stopwords for Water Plans
 
-This is to find the total terms within each document including the stopwords. For word searching, it is easier to use the quanteda package so we start by converting our VCorpus (from the tm package) to a quanteda corpus. 
+It is easier to use the quanteda package for word searching, so we start by converting our VCorpus (from the tm package) to a quanteda corpus. 
 
 ```{r}
 
@@ -56,7 +56,7 @@ total_terms_raw_words <- total_terms_raw$Tokens
 
 ### Word Searches for Water Plans
 
-Now we can search for specific words and tidy up the data to make a table
+Now we can search for specific words. 
 
 ```{r}
 
@@ -98,7 +98,7 @@ qq<- qq %>% dplyr::rename(State = "Var1", Quality = "Freq")
 
 ### Cleaning up Word Data for Water Plans 
 
-Now we can clean up our word data and standardize our findings by the total number of words in each doument.
+Now we can clean up our word data, standardize our findings by the total number of words in each doument, and create a table that has all of our results. 
 
 ```{r}
 
@@ -117,7 +117,7 @@ write.csv(word_data_waterplans,"~/word_data_waterplans.csv")
 ```
 
 
-Now, we can do the same thing with the drought plans
+Now, we can do the same thing with the drought plans...
 
 
 ```{r}
