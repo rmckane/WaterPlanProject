@@ -1,0 +1,146 @@
+---
+title: "Structural Topic Analysis"
+output: html_notebook
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+rm(list=ls()) #clears variables in global environment 
+#dev.off() #clears plots in history
+
+library(dplyr)
+library(parallel)
+library(SnowballC)
+library(stm)
+library(stringr)
+library(tm)
+library(wordcloud)
+
+getwd()
+```
+
+Read in data
+
+```{r}
+list.files()
+WaterPlans_text <- readRDS("WaterPlans_text.rds")
+```
+
+Prepare raw data 
+
+```{r}
+#which variables do we want to use as control factors? date? state name?
+#state as factor
+#date as numeric
+
+#Sample code below
+#write out metadata
+meta_Top3 <- alldata_filt_Top3 %>% select(source, datenum)
+str(meta_Top3)
+meta_Top3$source <- as.factor(meta_Top3$source)
+str(meta_Top3)
+
+#start processing data
+set.seed(916916)
+
+system.time(textPro_Top3 <- textProcessor(alldata_filt_Top3$fulltext,
+                                          metadata=meta_Top3,
+                                          stem=F,
+                                          verbose=T)) #7500 s
+
+system.time(textPrep_Top3 <- prepDocuments(textPro_Top3$documents,
+                                           textPro_Top3$vocab,
+                                           textPro_Top3$meta,
+                                           lower.thresh=0,
+                                           verbose=T)) #500s
+
+```
+
+Execute searchK to ID right number of topics
+
+```{r}
+detectCores() #72
+Ks <- 2:50 #broken it up into 2 chunks; one on this guy, one on Matt's comp
+
+system.time(kresult_allart_top3 <- searchK(textPrep_Top3$documents,
+                                           textPrep_Top3$vocab,
+                                           Ks,
+                                           data=textPrep_Top3$meta,
+                                           heldout.seed=916916,
+                                           cores=6))
+
+# pdf(file="searchK_utga_filt.pdf",width=6.5, height=6.5)
+# plot(kresult_utga_filt)
+# dev.off()
+```
+
+After looking at searchK, execute stm with X # of topics
+
+```{r}
+# system.time(All_stm100 <- stm(docs,vocab,K=100,
+#                               prevalence = ~source+s(datenum),max.em.its = 100,
+#                               data=meta,init.type="Spectral",
+#                               seed=916916,
+#                               verbose=T,
+#                               control=c(maxV=10000),
+#                               gamma.prior = "L1")) #1876185s elapsed ~ 21+ days
+# 
+# save.image(file="Allart_stm4filter.Rdata")
+
+```
+
+Explore topics: can look at words within topics as well as correlations between topics
+Could also include a lot of the general plotting approaches from the "Basic Topic Analysis.Rmd" file here too
+
+```{r}
+#print out labelTopics
+# library(writexl)
+# 
+# temp <- labelTopics(All_stm100) #spit out quick summary of main words/frex words
+# 
+# prob = as.data.frame(temp$prob)
+# prob$TopicNum <- paste("T",1:100,sep = "")
+# frex = as.data.frame(temp$frex)
+# frex$TopicNum <- paste("T",1:100,sep = "")
+# lift = as.data.frame(temp$lift)
+# lift$TopicNum <- paste("T",1:100,sep = "")
+# score = as.data.frame(temp$score)
+# score$TopicNum <- paste("T",1:100,sep = "")
+# sheets <- list("prob" = prob,
+#                "frex" = frex,
+#                "lift" = lift,
+#                "score" = score)
+# write_xlsx(sheets,"Allart/labeltopics_allart_filter.xlsx")
+# rm(prob,frex,lift,score,sheets)
+# 
+# #topic correlations & networks
+# all_corr <- topicCorr(model=All_stm100,
+#                        method = "simple",
+#                        cutoff = 0.01)
+# write.table(all_corr$cor,"Allart/all_corr.txt",sep=",")
+
+# utga_corr <- read.csv("utga_corr.csv") #only has the corr matrix
+# utga_corr_abs <- abs(utga_corr) #do abs value of cor
+# utga_corr_abs <- as.matrix(utga_corr_abs)
+# summary(utga_corr_abs)
+# str(utga_corr_abs)
+# 
+# p_network_topics_utga <- graph_from_adjacency_matrix(utga_corr_abs,mode="undirected",weighted=TRUE,diag=FALSE)
+# plot.new()
+# plot(p_network_topics_utga, edge.width=E(p_network_topics_utga)$weight*6)
+# 
+# #dendograms of topics - also for filtering
+# comm_walktrap_utga <- cluster_walktrap(p_network_topics_utga) #weights are set as default
+# membership(comm_walktrap_utga)
+# plot_comm_walktrap_az <- set_vertex_attr(p_network_topics_az_orig,"mem_az",value = membership(comm_walktrap_az))
+# plot(as.dendrogram(comm_walktrap_utga))
+# 
+# #topic proportions
+# theta_mean <- colMeans(BothStates_stm100$theta)
+# write.csv(theta_mean,"thetamean_utga.csv")
+# summary(theta_mean)
+
+
+```
+
