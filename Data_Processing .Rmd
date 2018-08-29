@@ -76,27 +76,6 @@ WaterPlans_text_clean <- WaterPlans_text %>%
 ```
 
 
-###TDM (Water Plans)
-Create a term document matrix of the pdf files for further analysis
-
-```{r}
-#Construct the dTM
-WaterPlans.dtm <- DocumentTermMatrix(WaterPlans_text_clean, 
-                                     control = list(stopwords = TRUE,
-                                                    stemming = TRUE,
-                                                    bounds = list(global = c(3, Inf))))
-
-WaterPlans.dtm 
-
-inspect(WaterPlans.dtm[1:10,]) 
-
-
-#make sure there are no zeros in the dtm
-raw.sum <- apply(WaterPlans.dtm,1,FUN=sum) 
-
-raw.sum #no zeros
-
-```
 
 
 ###Reading in the Drought Plans 
@@ -149,27 +128,5 @@ DroughtPlans_text_clean <- WaterPlans_text %>%
   
 ```
 
-
-###TDM (Drought Plans)
-
-
-```{r}
-#Construct the dTM
-DroughtPlans.dtm <- DocumentTermMatrix(WaterPlans_text_clean, 
-                                     control = list(stopwords = TRUE,
-                                                    stemming = TRUE,
-                                                    bounds = list(global = c(3, Inf))))
-
-DroughtPlans.dtm 
-
-inspect(DroughtPlans.dtm[1:10,]) 
-
-
-#make sure there are no zeros in the dtm
-raw.sum <- apply(DroughtPlans.dtm,1,FUN=sum) 
-
-raw.sum #no zeros
-
-```
 
 
