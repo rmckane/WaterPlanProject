@@ -56,8 +56,7 @@ states <- read.csv("/Users/rachelmckane/Desktop/State_List.csv", stringsAsFactor
 all_stopwords <- c(stpwrds,addwords,states[['State']],states[['State_Abbreviation']]) #merge the two lists
 all_stopwords <- tolower(all_stopwords) #make all state names/abbrevs lowercase
 rm(stpwrds,addwords,states) 
-  tm_map(removeNumbers) %>% #Remove numbers
-  tm_map(stripWhitespace) #Remove extra whitespaces
+
   
   
   (f_weirdos <- content_transformer(function(x, pattern) gsub(pattern, "", x)))
@@ -109,8 +108,6 @@ states <- read.csv("/Users/rachelmckane/Desktop/State_List.csv", stringsAsFactor
 all_stopwords <- c(stpwrds,addwords,states[['State']],states[['State_Abbreviation']]) #merge the two lists
 all_stopwords <- tolower(all_stopwords) #make all state names/abbrevs lowercase
 rm(stpwrds,addwords,states) 
-  tm_map(removeNumbers) %>% #Remove numbers
-  tm_map(stripWhitespace) #Remove extra whitespaces
   
   
   (f_weirdos <- content_transformer(function(x, pattern) gsub(pattern, "", x)))
