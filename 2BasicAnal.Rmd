@@ -13,13 +13,14 @@ knitr::opts_chunk$set(echo = TRUE)
 knitr::opts_chunk$set(root.dir = "  ") # Set your root directory 
 
 
-library("tidyverse") #includes dplyr, ggplot2, tidyr, purr, readr, and tibble
+library(tidyverse) #includes dplyr, ggplot2, tidyr, purr, readr, and tibble
+library(tm) #has a lot of text cleaning fns, like remove numbers and punctuation; incl. NLP and slam
+library(wordcloud)
+
 # library("broom") #has the tidy fn to convert non-tidy objects into tidy objects
 # library("SnowballC")
 # library("stringr") #has str_extract fn to avoid some of the strange utf-8 text encodings
-# library("tm") #has a lot of text cleaning fns, like remove numbers and punctuation; incl. NLP and slam
 # library("tidytext") #has unnest_tokens fn; includes SnowballC; #has tidy fn to convert topics into tidy format
-# library("wordcloud")
 # library("quanteda") #searching for specific words
 # library("pdftools") #reading in pdfs
 
@@ -48,15 +49,28 @@ latest_data %>%
   select(Plan_Text)
 ```
 
-
-###Read in the RDS file with the Corpus of Water Plans
-
-For this analysis we are working with the water plans in text format to search specific words. 
-Start by reading in the RDS file that contains all of the clean text files.  
-
+Generate word clouds of processed text
 ```{r}
+#start with water plans
 
-WaterPlans_text <- readRDS(file = "~/WaterPlans_text.rds")
+WaterPlanProc <- latest_data %>% filter(PlanType == "WaterPlanProcessed" & `Plan(1=YES) ` == 1) #27 plans
+
+WaterPlanProc_subset <- WaterPlanProc %>%
+  select(StateAbbreviation, Plan_Text) %>%
+  rename(doc_id = StateAbbreviation,
+         text = Plan_Text)
+
+WaterPlanProc_Corpus <- Corpus(DataframeSource(WaterPlanProc_subset))
+
+tdm <- TermDocumentMatrix(WaterPlanProc_Corpus)
+m <- as.matrix(tdm)
+v <- sort(rowSums(m),decreasing=TRUE)
+d <- data.frame(word = names(v),freq=v)
+
+pal <- brewer.pal(9, "BuGn")
+pal <- pal[-(1:2)]
+
+wordcloud(d$word,d$freq, scale=c(8,.3),min.freq=100,max.words=Inf, random.order=F, rot.per=.15, colors=pal, vfont=c("sans serif","plain"))
 
 ```
 
