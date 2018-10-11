@@ -1,0 +1,57 @@
+---
+title: "4Figures"
+author: "TG"
+date: "October 11, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+devtools::install_github("UrbanInstitute/urbnmapr")
+library(tidyverse)
+library(urbnmapr)
+```
+
+## Visuals
+
+```{r}
+map_data <- left_join(urbnmapr::states, statewords_allstates, by= c("state_abbv" = "State_Abbreviation"))
+
+
+map_data %>%
+  ggplot(aes(x = long, y = lat, group = group, fill = Sustainability_Percent)) +
+  geom_polygon(color = NA) +
+  coord_map("albers", lat0 = 39, lat1 = 45) +
+  ggtitle("Sustainability Word Use") +
+  labs(fill = "Sustainability") +
+  theme(legend.position="bottom") +
+  theme(panel.background = element_blank(), axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank(),
+        axis.title.y=element_blank()) +
+  theme(plot.title = element_text(size=14))
+
+
+map_data %>%
+  ggplot(aes(x = long, y = lat, group = group, fill = Total_Words)) +
+  geom_polygon(color = NA) +
+  coord_map("albers", lat0 = 39, lat1 = 45) +
+  ggtitle("Total Words") +
+  labs(fill = "Total Words") +
+  theme(legend.position="bottom") +
+  theme(panel.background = element_blank(), axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank(),
+        axis.title.y=element_blank()) +
+  theme(plot.title = element_text(size=14))
+  
+
+map_data %>%
+  ggplot(aes(x = long, y = lat, group = group, fill = Quality_Percent)) +
+  geom_polygon(color = NA) +
+```

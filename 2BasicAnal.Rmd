@@ -12,20 +12,40 @@ rm(list=ls()) #clears variables in global environment
 knitr::opts_chunk$set(echo = TRUE)
 knitr::opts_chunk$set(root.dir = "  ") # Set your root directory 
 
-getwd()
+
+library("tidyverse") #includes dplyr, ggplot2, tidyr, purr, readr, and tibble
+# library("broom") #has the tidy fn to convert non-tidy objects into tidy objects
+# library("SnowballC")
+# library("stringr") #has str_extract fn to avoid some of the strange utf-8 text encodings
+# library("tm") #has a lot of text cleaning fns, like remove numbers and punctuation; incl. NLP and slam
+# library("tidytext") #has unnest_tokens fn; includes SnowballC; #has tidy fn to convert topics into tidy format
+# library("wordcloud")
+# library("quanteda") #searching for specific words
+# library("pdftools") #reading in pdfs
+
+getwd()#setwd("C:/Users/tgunda/Desktop/WaterPlanProject")
 ```
 
+Read in data
+
 ```{r}
-library("tidyverse") #includes dplyr, ggplot2, tidyr, purr, readr, and tibble
-library("broom") #has the tidy fn to convert non-tidy objects into tidy objects
-library("SnowballC")
-library("stringr") #has str_extract fn to avoid some of the strange utf-8 text encodings
-library("tm") #has a lot of text cleaning fns, like remove numbers and punctuation; incl. NLP and slam
-library("tidytext") #has unnest_tokens fn; includes SnowballC; #has tidy fn to convert topics into tidy format
-library("topicmodels")
-library("wordcloud")
-library("quanteda") #searching for specific words
-library("pdftools") #reading in pdfs
+list.files(pattern = "rds", ignore.case=TRUE)
+latest_data <- readRDS("FinalDataFrame.Rds")
+str(latest_data)
+
+#data quality issues
+latest_data %>%
+  filter(`Plan(1=YES) ` == 0) %>%
+  count() #60
+
+sum(is.na(latest_data$Plan_Text)) #61 NAs, one more NA than 0 plan
+
+latest_data %>%
+  filter(`Plan(1=YES) ` == 1 & is.na(Plan_Text)) #PA WaterPlanProcessed has no text
+
+latest_data %>%
+  filter(StateAbbreviation =="PA" & PlanType =="WaterPlanRaw") %>%
+  select(Plan_Text)
 ```
 
 
