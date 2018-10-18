@@ -27,6 +27,7 @@ library("topicmodels")
 library("wordcloud")
 library("quanteda")
 library("pdftools")
+library("plyr")
 ```
 
 
@@ -64,7 +65,7 @@ rm(stpwrds,addwords,states)
   (f_weirdos <- content_transformer(function(x, pattern) gsub(pattern, "", x)))
 
 #now do some special corpus cleaning...order of functions matters!
-WaterPlanProcessed <- WaterPlans_text %>%
+WaterPlanProcessed <- WaterPlanRaw %>%
   tm_map(f_weirdos,"[^[:alnum:] ]") %>% #gets rid of form feed (/f) and euro symbol, but not a accents
   tm_map(f_weirdos,"â") %>% #remove accents
   tm_map(content_transformer(tolower)) %>% #Switch to lower case
@@ -161,10 +162,12 @@ DataFrame2 <- DataFrame1 %>% separate(Id, into = c("Plan_Type", "State" ), sep =
 
 StateList<- read_csv("/Users/RachelMckane/Desktop/StatePlans.csv")
 
+saveRDS(StateList, file = "/Users/rachelmckane/Documents/GitHub/WaterPlanProject/StateList.Rds")
+
 FinalDataFrame <- left_join(StateList, DataFrame2,  by=c("State" = "State", "Plan_Type" = "Plan_Type"))
 
 
-saveRDS(FinalDataFrame, file = "/Users/rachelmckane/Desktop/FinalDataFrame.Rds")
+saveRDS(FinalDataFrame, file = "/Users/rachelmckane/Documents/GitHub/WaterPlanProject/FinalDataFrame.Rds")
 
   
 ```
