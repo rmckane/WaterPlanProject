@@ -37,11 +37,13 @@ library("pdftools")
 read <- readPDF(control = list(text = "-layout")) #define engine
 files <- list.files(path = "/Users/rachelmckane/Desktop/Plans2/", pattern = "pdf$")
 files_path <- paste("/Users/rachelmckane/Desktop/Plans2/",files,sep="")
-WaterPlans_text <- VCorpus(URISource(files_path), 
+WaterPlansRaw <- VCorpus(URISource(files_path), 
                             readerControl = list(reader = read))
 
 
-class(WaterPlans_text) 
+class(WaterPlansRaw) 
+
+saveRDS(WaterPlansRaw, file = "/Users/rachelmckane/Desktop/WaterPlansRaw.Rds")
 ```
 
 ###Clean up the VCorpus (Water Plans)
@@ -62,7 +64,7 @@ rm(stpwrds,addwords,states)
   (f_weirdos <- content_transformer(function(x, pattern) gsub(pattern, "", x)))
 
 #now do some special corpus cleaning...order of functions matters!
-WaterPlans_text_clean <- WaterPlans_text %>%
+WaterPlanProcessed <- WaterPlans_text %>%
   tm_map(f_weirdos,"[^[:alnum:] ]") %>% #gets rid of form feed (/f) and euro symbol, but not a accents
   tm_map(f_weirdos,"â") %>% #remove accents
   tm_map(content_transformer(tolower)) %>% #Switch to lower case
@@ -71,7 +73,9 @@ WaterPlans_text_clean <- WaterPlans_text %>%
   tm_map(removeNumbers) %>% #Remove numbers
   tm_map(stripWhitespace) #Remove white space 
   
-  
+
+saveRDS(WaterPlanProcessed, file = "/Users/rachelmckane/Desktop/WaterPlanProcessed.Rds")
+
 ```
 
 
@@ -81,21 +85,14 @@ WaterPlans_text_clean <- WaterPlans_text %>%
 
 ```{r}
 
-
-#id <- "1eSu8mBDwT5C71X_0YhXHeTJ-Jsu6yozV" # google file ID
-#industry<-read_csv(sprintf("https://docs.google.com/uc?id=%s&export=download", id), skip =1 ) 
-
-#The water plans are on google at the id link above. It would be cool if we could figure how to read them in from that shareable link. 
-
-
 read <- readPDF(control = list(text = "-layout")) #define engine
 files <- list.files(path = "/Users/rachelmckane/Desktop/Plans2/", pattern = "pdf$")
 files_path <- paste("/Users/rachelmckane/Desktop/Plans2/",files,sep="")
-DroughtPlans_text <- VCorpus(URISource(files_path), 
+DroughtPlanRaw<- VCorpus(URISource(files_path), 
                             readerControl = list(reader = read))
 
 
-class(DroughtPlans_text) 
+class(DroughtPlanRaw) 
 ```
 
 ###Clean up the VCorpus (Drought Plans)
@@ -113,7 +110,7 @@ rm(stpwrds,addwords,states)
   (f_weirdos <- content_transformer(function(x, pattern) gsub(pattern, "", x)))
 
 #now do some special corpus cleaning...order of functions matters!
-DroughtPlans_text_clean <- WaterPlans_text %>%
+DroughtPlanProcessed <- DroughtPlanRaw %>%
   tm_map(f_weirdos,"[^[:alnum:] ]") %>% #gets rid of form feed (/f) and euro symbol, but not a accents
   tm_map(f_weirdos,"â") %>% #remove accents
   tm_map(content_transformer(tolower)) %>% #Switch to lower case
@@ -125,5 +122,47 @@ DroughtPlans_text_clean <- WaterPlans_text %>%
   
 ```
 
+###DataFrame
 
+```{r}
+
+DroughtPlanProcessed<- readRDS(file = "/Users/rachelmckane/Desktop/DroughtPlansProcessed_text.Rds")
+DroughtPlanRaw<- readRDS( file = "/Users/rachelmckane/Desktop/DroughtPlansRaw_text.Rds")
+WaterPlanProcessed<- readRDS(file = "/Users/rachelmckane/Desktop/WaterPlans_text.Rds")
+WaterPlanRaw<- readRDS(file = "/Users/rachelmckane/Desktop/WaterPlansRaw_text.Rds")
+
+
+writeCorpus(DroughtPlanProcessed, path = "/Users/RachelMckane/Desktop/Trash/DroughtPlanProcessed")
+writeCorpus(DroughtPlanRaw, path = "/Users/RachelMckane/Desktop/Trash/DroughtPlanRaw")
+writeCorpus(WaterPlanProcessed, path = "/Users/RachelMckane/Desktop/Trash/WaterPlanProcessed")
+writeCorpus(WaterPlansRaw_text, path = "/Users/RachelMckane/Desktop/Trash/WaterPlanRaw")
+
+AllPlans<- list.files("/Users/RachelMckane/Desktop/Trash", pattern = "\\.txt$",
+                      recursive = TRUE, full.names = TRUE) 
+
+Plan_Name <- AllPlans  %>% 
+  str_replace(".txt", "") %>% 
+  str_replace("/Users/RachelMckane/Desktop/Trash/", "") 
+
+Plan_Texts <- AllPlans  %>% 
+  map(read_file)
+
+names(Plan_Texts) <- Plan_Name
+
+DataFrame1 <- ldply(Plan_Texts, data.frame)  %>% 
+  dplyr::rename(Id = .id, Plan_Text=X..i..) %>%
+  dplyr:: mutate(Plan_Text = as.character(Plan_Text))
+
+DataFrame2 <- DataFrame1 %>% separate(Id, into = c("Plan_Type", "State" ), sep = '[/]') %>%
+  mutate(State = str_sub(State, 1, str_length(State)-4))
+
+StateList<- read_csv("/Users/RachelMckane/Desktop/StatePlans.csv")
+
+FinalDataFrame <- left_join(StateList, DataFrame2,  by=c("State" = "State", "Plan_Type" = "Plan_Type"))
+
+
+saveRDS(FinalDataFrame, file = "/Users/rachelmckane/Desktop/FinalDataFrame.Rds")
+
+  
+```
 
