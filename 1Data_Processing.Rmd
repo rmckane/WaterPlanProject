@@ -37,13 +37,13 @@ library("pdftools")
 read <- readPDF(control = list(text = "-layout")) #define engine
 files <- list.files(path = "/Users/rachelmckane/Desktop/Plans2/", pattern = "pdf$")
 files_path <- paste("/Users/rachelmckane/Desktop/Plans2/",files,sep="")
-WaterPlansRaw <- VCorpus(URISource(files_path), 
+WaterPlanRaw <- VCorpus(URISource(files_path), 
                             readerControl = list(reader = read))
 
 
-class(WaterPlansRaw) 
+class(WaterPlanRaw) 
 
-saveRDS(WaterPlansRaw, file = "/Users/rachelmckane/Desktop/WaterPlansRaw.Rds")
+saveRDS(WaterPlanRaw, file = "/Users/rachelmckane/Desktop/WaterPlanRaw.Rds")
 ```
 
 ###Clean up the VCorpus (Water Plans)
@@ -86,13 +86,16 @@ saveRDS(WaterPlanProcessed, file = "/Users/rachelmckane/Desktop/WaterPlanProcess
 ```{r}
 
 read <- readPDF(control = list(text = "-layout")) #define engine
-files <- list.files(path = "/Users/rachelmckane/Desktop/Plans2/", pattern = "pdf$")
-files_path <- paste("/Users/rachelmckane/Desktop/Plans2/",files,sep="")
+files <- list.files(path = "/Users/rachelmckane/Desktop/Drought/", pattern = "pdf$")
+files_path <- paste("/Users/rachelmckane/Desktop/Drought/",files,sep="")
 DroughtPlanRaw<- VCorpus(URISource(files_path), 
                             readerControl = list(reader = read))
 
 
 class(DroughtPlanRaw) 
+
+
+saveRDS(DroughtPlanRaw, file = "/Users/rachelmckane/Desktop/DroughtPlanRaw.Rds")
 ```
 
 ###Clean up the VCorpus (Drought Plans)
@@ -119,23 +122,23 @@ DroughtPlanProcessed <- DroughtPlanRaw %>%
   tm_map(removeNumbers) %>% #Remove numbers
   tm_map(stripWhitespace) #Remove white space 
   
-  
+saveRDS(DroughtPlanProcessed, file = "/Users/rachelmckane/Desktop/DroughtPlanProcessed.Rds")
+
 ```
 
 ###DataFrame
 
 ```{r}
 
-DroughtPlanProcessed<- readRDS(file = "/Users/rachelmckane/Desktop/DroughtPlansProcessed_text.Rds")
-DroughtPlanRaw<- readRDS( file = "/Users/rachelmckane/Desktop/DroughtPlansRaw_text.Rds")
-WaterPlanProcessed<- readRDS(file = "/Users/rachelmckane/Desktop/WaterPlans_text.Rds")
-WaterPlanRaw<- readRDS(file = "/Users/rachelmckane/Desktop/WaterPlansRaw_text.Rds")
-
+DroughtPlanProcessed<- readRDS(file = "/Users/rachelmckane/Desktop/DroughtPlanProcessed.Rds")
+DroughtPlanRaw<- readRDS( file = "/Users/rachelmckane/Desktop/DroughtPlanRaw.Rds")
+WaterPlanProcessed<- readRDS(file = "/Users/rachelmckane/Desktop/WaterPlanProcessed.Rds")
+WaterPlanRaw<- readRDS(file = "/Users/rachelmckane/Desktop/WaterPlanRaw.Rds")
 
 writeCorpus(DroughtPlanProcessed, path = "/Users/RachelMckane/Desktop/Trash/DroughtPlanProcessed")
 writeCorpus(DroughtPlanRaw, path = "/Users/RachelMckane/Desktop/Trash/DroughtPlanRaw")
 writeCorpus(WaterPlanProcessed, path = "/Users/RachelMckane/Desktop/Trash/WaterPlanProcessed")
-writeCorpus(WaterPlansRaw_text, path = "/Users/RachelMckane/Desktop/Trash/WaterPlanRaw")
+writeCorpus(WaterPlanRaw, path = "/Users/RachelMckane/Desktop/Trash/WaterPlanRaw")
 
 AllPlans<- list.files("/Users/RachelMckane/Desktop/Trash", pattern = "\\.txt$",
                       recursive = TRUE, full.names = TRUE) 
