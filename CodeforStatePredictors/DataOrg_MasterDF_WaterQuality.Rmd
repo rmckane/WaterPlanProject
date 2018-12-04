@@ -1,0 +1,230 @@
+---
+title: "Water Quality: Master Data Frame Variable Exploration"
+author: "TG"
+date: "November 6, 2017"
+output: pdf_document
+---
+
+## Background
+This Rmd file captures the code used to generate a master dataframe to faciliate follow-up exploratory data analysis of water quality issues in the states 
+
+####Set-up environment
+```{r setup, include=FALSE}
+rm(list=ls()) #clears variables in global environment :-)
+#dev.off() #clears plots in history
+
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(root.dir = "//vu1file.it.vanderbilt.edu/VIEE/Shared/Water Security/Water Quality")
+
+#setwd('//vu1file.it.vanderbilt.edu/VIEE/Shared/FEW/RCode') #Use directory E when on desktop and G on laptop
+getwd()
+```
+####Import Packages
+```{r message=FALSE} 
+library(tidyverse) #includes dplyr, ggplot2, tidyr, purr, readr, and tibble
+library(reshape2)
+library(cowplot)
+#library(viridis)
+#library(stringr)
+
+#StateList <- read.csv('../Data/RawData/StateList.csv')
+#StateList$State <- as.character(StateList$State)
+```
+
+####Import all of the data
+```{r, echo=FALSE, warning=FALSE}
+#create list of filenames and filepaths
+filepaths <- paste("../Data/FormattedData/", list.files("../Data/FormattedData"), sep="") 
+filenames <- gsub("\\.csv$","", list.files("../Data/FormattedData", pattern="\\.csv$"))
+
+#read in the csvs and assign to separate dfs
+for(i in 1:length(filenames)){
+  assign(filenames[i], read.csv(filepaths[i])) #read in as regular dfs; read_csv = tbl df
+}
+
+rm(i, filepaths, filenames)
+```
+
+###Generate DFs
+-generate master response variable df with the most important impaired data as well as the NCDC and EPA region data
+
+-generate master predictor variable df with the most important data (note: will not include illnesses)
+
+```{r}
+rm(CDCWaterIllnesses) #not going to include illnesses in the analysis due to framework approach
+
+#----------Construct df of misc state static info, including normalization variables into single df
+ClimRegions <- dcast(ClimRegions, State ~ variable)
+
+levels(StateAreas$variable)
+StateAreas <- StateAreas %>%
+  filter(variable %in% c("Total Area_SqMi","Land Area_SqMi")) %>%
+  dcast(State ~ variable)
+
+StateLatLong <- dcast(StateLatLong, State ~ variable)
+
+EPARegions <- dcast(EPARegions, State ~ variable)
+
+levels(PopulationSize_Growth$variable)
+PopulationSize <- PopulationSize_Growth %>%
+  filter(variable %in% "Population Size") %>%
+  dcast(State ~ variable)
+
+StateInfo <- do.call(cbind, list(StateAreas,StateLatLong,ClimRegions,EPARegions, PopulationSize))
+StateInfo <- StateInfo[!duplicated(as.list(StateInfo))] #drop duplicate state label columns
+rm(ClimRegions,StateAreas,StateLatLong,PopulationSize,EPARegions) #remove original datafiles
+
+#---------------------Construct response matrix of impaired data
+levels(StateImpairedWaters$variable)
+Responsedf <- StateImpairedWaters %>%
+  filter(variable %in% c("ImpairedLakes_Percent","ImpairedStreams_Percent")) %>%
+  dcast(State ~ variable)
+rm(StateImpairedWaters)
+
+#------------------Construct predictor matrix of df
+rm(AridityIndex_TimeSeries) #no need for this at this point
+
+#Exploration and selection of the variables
+levels(Age$variable) #keep all 3 of thse for now: 20 to 34, 62 and over, Median age; % or years
+Age <- dcast(Age, State ~ variable)
+colnames(Age) <- c("State","Age:20 to 34_percent","Age:62+_percent","Median Age_years")
+
+levels(AridityIndex_Median_Variability$variable) #keep all 3: median, interannual var, and intraannual var
+AridityIndex_Median_Variability <- dcast(AridityIndex_Median_Variability, State ~ variable)
+
+levels(CleanWaterNeeds$variable) #units: dollars
+CleanWaterNeeds <- dcast(CleanWaterNeeds, State ~ variable)
+colnames(CleanWaterNeeds) <- c("State","CleanWaterNeeds_Dollars")
+
+levels(ClimateInWaterPlans$variable) #units: categorical
+ClimateInWaterPlans <- dcast(ClimateInWaterPlans, State ~ variable)
+colnames(ClimateInWaterPlans) <- c("State","CliminWaterPlans_0poorto4strong")
+
+levels(ConservationScore_ElectricityUse$variable) #units: index and Kwh
+ConservationScore_ElectricityUse <- dcast(ConservationScore_ElectricityUse, State ~ variable)
+colnames(ConservationScore_ElectricityUse) <- c("State","AnnualElecUseperCapita_KwH","AWE Conservation Score")
+
+levels(Education$variable) #units: %
+Education <- dcast(Education, State ~ variable)
+colnames(Education) <- c("State","Education: Bachelor's or higher_percent","Education: Graduate or Professional degree_percent","Education: High School or higher_percent")
+
+levels(FederalGrantsAwarded$variable)
+FederalGrantsAwarded <- dcast(FederalGrantsAwarded, State ~ variable)
+colnames(FederalGrantsAwarded) <- c("State","Cumulative Federal Grants (CWSRF and DWSRF)_Dollars")
+  
+levels(GDP_RPP$variable); levels(GDP_RPP$Units)
+GDP_RPP <- dcast(GDP_RPP, State ~ variable)
+colnames(GDP_RPP) <- c("State", "Gross Domestic Product_CurrentDollars","Regional Price Parities_Index")
+
+levels(InterstateCompacts$variable)
+InterstateCompacts <- dcast(InterstateCompacts,State~variable)
+
+levels(Labor$variable); levels(Labor$Units)
+Labor <- Labor %>%
+  filter(variable %in% c("Median Household Income","Unemployment Rate")) %>%
+  dcast(State ~ variable)
+colnames(Labor) <- c("State","Median Household Income_Infl-adjDollars","Unemployment Rate_percent")
+
+levels(LandUse$variable); levels(LandUse$Units)
+LandUse$variable <- paste(LandUse$variable,"percent",sep="_")
+LandUse <- dcast(LandUse, State~variable)
+
+levels(LeadingDamOwnership$variable)
+LeadingDamOwnership <- dcast(LeadingDamOwnership, State~variable)
+
+levels(NetElectricityGeneration$variable); levels(NetElectricityGeneration$Units)
+NetElectricityGeneration$variable <- paste(NetElectricityGeneration$variable,"thousMWh",sep="_")
+NetElectricityGeneration <- dcast(NetElectricityGeneration,State~variable)
+
+levels(NutrientTradingPrgrms$variable); levels(NutrientTradingPrgrms$Notes)
+NutrientTradingPrgrms <- dcast(NutrientTradingPrgrms, State~variable)
+
+levels(PercentageofHydropowerGeneration$variable)
+PercentageofHydropowerGeneration$variable <- paste(PercentageofHydropowerGeneration$variable,
+                                                   "percent",sep="_")
+PercentageofHydropowerGeneration <- dcast(PercentageofHydropowerGeneration, State~variable)
+
+levels(PopulationSize_Growth$variable);levels(PopulationSize_Growth$Units)
+PopulationSize_Growth <- dcast(PopulationSize_Growth,State~variable)
+
+levels(PublicSupply_DW$variable); levels(PublicSupply_DW$Units)
+PublicSupply_DW$variable <- paste(PublicSupply_DW$variable,"percent",sep="_")
+PublicSupply_DW <- dcast(PublicSupply_DW, State~variable)
+
+levels(PVI$variable);levels(PVI$Units); levels(PVI$Notes)
+PVI <- dcast(PVI, State~variable)
+
+levels(RaceEthnicity$variable); levels(RaceEthnicity$Units)
+RaceEthnicity$variable <- paste(RaceEthnicity$variable,"percent",sep="_")
+RaceEthnicity <- dcast(RaceEthnicity,State~variable)
+
+levels(SewageDisposal1990$variable); levels(SewageDisposal1990$Units)
+SewageDisposal1990$variable <- paste(SewageDisposal1990$variable,"percent",sep="_")
+SewageDisposal1990 <- dcast(SewageDisposal1990,State~variable)
+
+levels(StateLegislatureParties$variable)
+StateLegislatureParties <- dcast(StateLegislatureParties, State~variable)
+
+levels(TotalDamStorage$variable);levels(TotalDamStorage$Units)
+TotalDamStorage$variable <- paste(TotalDamStorage$variable,"Ac-ft",sep="_")
+TotalDamStorage<- dcast(TotalDamStorage,State~variable)
+
+levels(TotalWaterUse$variable); levels(TotalWaterUse$Units)
+TotalWaterUse$variable <-paste(TotalWaterUse$variable,"MGD",sep="_")
+TotalWaterUse <- dcast(TotalWaterUse,State~variable) #, value.var = "Total"
+
+levels(UrbanPercent_Growth$variable)
+UrbanPercent_Growth <- dcast(UrbanPercent_Growth,State~variable)
+
+levels(WaterPovertyRisk$variable); levels(WaterPovertyRisk$Units)
+WaterPovertyRisk$variable <- "WaterPovertyHighAtRisk_%ofTracts"
+WaterPovertyRisk <- dcast(WaterPovertyRisk,State~variable)
+
+levels(WaterUse_Sector$variable); levels(WaterUse_Sector$Units)
+WaterUse_Sector$Sector <- paste("Percent_Useby",WaterUse_Sector$Sector,sep = "_")
+WaterUse_Sector <- dcast(WaterUse_Sector,State~Sector)
+
+levels(WaterUsebySource_Quality$variable)
+WaterUsebySource_Quality$Source <- paste("Percent_SalinetoTotal",WaterUsebySource_Quality$Source,
+                                         sep = "_")
+WaterUsebySource_Quality <- dcast(WaterUsebySource_Quality,State~Source)
+
+levels(WaterUsebySource_SW$variable); levels(WaterUsebySource_SW$Units)
+WaterUsebySource_SW$variable <- "Surface water use_percent of total water use"
+WaterUsebySource_SW <- dcast(WaterUsebySource_SW,State~variable)
+
+colnames(StateDroughtPlansInfo)
+StateDroughtPlansInfo$X <- NULL
+
+#...bind all of the dfs 
+AllPredictors <- do.call(cbind, list(Age,AridityIndex_Median_Variability,CleanWaterNeeds,
+                                     ClimateInWaterPlans,ConservationScore_ElectricityUse,
+                                     Education,FederalGrantsAwarded,GDP_RPP,InterstateCompacts,
+                                     Labor,LandUse,LeadingDamOwnership,NetElectricityGeneration,
+                                     NutrientTradingPrgrms,PercentageofHydropowerGeneration,
+                                     PopulationSize_Growth,PublicSupply_DW,PVI,RaceEthnicity,
+                                     SewageDisposal1990,StateLegislatureParties,TotalDamStorage,
+                                     TotalWaterUse,UrbanPercent_Growth,WaterPovertyRisk,
+                                     WaterUse_Sector,WaterUsebySource_Quality,WaterUsebySource_SW, StateDroughtPlansInfo))
+
+AllPredictors <- AllPredictors[!duplicated(as.list(AllPredictors))] #drop duplicate state label columns
+
+rm(Age,AridityIndex_Median_Variability,CleanWaterNeeds,
+                                     ClimateInWaterPlans,ConservationScore_ElectricityUse,
+                                     Education,FederalGrantsAwarded,GDP_RPP,InterstateCompacts,
+                                     Labor,LandUse,LeadingDamOwnership,NetElectricityGeneration,
+                                     NutrientTradingPrgrms,PercentageofHydropowerGeneration,
+                                     PopulationSize_Growth,PublicSupply_DW,PVI,RaceEthnicity,
+                                     SewageDisposal1990,StateLegislatureParties,TotalDamStorage,
+                                     TotalWaterUse,UrbanPercent_Growth,WaterPovertyRisk,
+                                     WaterUse_Sector,WaterUsebySource_Quality,WaterUsebySource_SW)
+
+```
+
+###Save data into easily usable files
+
+```{r}
+# write.csv(AllPredictors,"../Data/MasterDF/AllPredictors.csv")
+# write.csv(Responsedf,"../Data/MasterDF/ResponseVars.csv")
+# write.csv(StateInfo,"../Data/MasterDF/StateInfo.csv")
+```

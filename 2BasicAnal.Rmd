@@ -6,16 +6,19 @@ output: html_document
 ---
 
 ```{r setup, include=FALSE}
-rm(list=ls()) #clears variables in global environment 
-#dev.off() #clears plots in history
-
 knitr::opts_chunk$set(echo = TRUE)
 knitr::opts_chunk$set(root.dir = "  ") # Set your root directory 
 
+rm(list=ls()) #clears variables in global environment 
 
+getwd()#"Z:/Documents/Projects/Vanderbilt/State Water Plans/StateWaterPlans/WaterPlanProject"
+```
+
+```{r}
 library(tidyverse) #includes dplyr, ggplot2, tidyr, purr, readr, and tibble
 library(tm) #has a lot of text cleaning fns, like remove numbers and punctuation; incl. NLP and slam
 library(wordcloud)
+library(RColorBrewer)
 
 # library("broom") #has the tidy fn to convert non-tidy objects into tidy objects
 # library("SnowballC")
@@ -23,59 +26,124 @@ library(wordcloud)
 # library("tidytext") #has unnest_tokens fn; includes SnowballC; #has tidy fn to convert topics into tidy format
 # library("quanteda") #searching for specific words
 # library("pdftools") #reading in pdfs
-
-getwd()#setwd("C:/Users/tgunda/Desktop/WaterPlanProject")
 ```
 
-Read in data
+### Read in data
 
 ```{r}
 list.files(pattern = "rds", ignore.case=TRUE)
-latest_data <- readRDS("FinalDataFrame.Rds")
-str(latest_data)
+WaterDroughtPlans <- readRDS("StatePlans_WaterDrought_RawProcessed.Rds")
+str(WaterDroughtPlans)
 
 #data quality issues
-latest_data %>%
-  filter(`Plan(1=YES) ` == 0) %>%
-  count() #60
+WaterDroughtPlans %>%
+  filter(State_Abbreviation =="PA" & Plan_Type =="WaterPlanProcessed") %>%
+  select(Plan_Text) #good - previous data quality issue fixed
 
-sum(is.na(latest_data$Plan_Text)) #61 NAs, one more NA than 0 plan
-
-latest_data %>%
-  filter(`Plan(1=YES) ` == 1 & is.na(Plan_Text)) #PA WaterPlanProcessed has no text
-
-latest_data %>%
-  filter(StateAbbreviation =="PA" & PlanType =="WaterPlanRaw") %>%
-  select(Plan_Text)
+WaterDroughtPlans %>%
+  mutate(PlanType = substr(Plan_Type,1,2)) %>% #create unique ID for waterplan vs droughtplan
+  group_by(State) %>%
+  count(PlanType) %>%
+  filter(n !=2) #no state plans with non-2 representatives (i.e., both raw and processed are present)
 ```
 
-Generate word clouds of processed text
+### Explore water plans 
+
+create fn to generate word clouds of processed text
 ```{r}
-#start with water plans
+wordcloudRows <- function(df, row, addstopwords, figname){
+  #read in text and generate corpus
+  dfrow <- df$Plan_Text[row]
+  text <- Corpus(VectorSource(dfrow))
+  
+  #clean up weird symbols
+  (f_weirdos <- content_transformer(function(x, pattern) gsub(pattern, "", x)))
+  
+  #define all stop words (including specific ones we add, such as state names) - do first because they contain punctuation
+  stpwrds <- tm::stopwords("SMART") #list of stopwords in the tm pkg for the SMART option
+  addwords <- c(stpwrds, "state", "water","plan", "drought", addstopwords) 
+  all_stopwords <- tolower(addwords) #make all state names/abbrevs lowercase
+  rm(stpwrds,addwords) 
 
-WaterPlanProc <- latest_data %>% filter(PlanType == "WaterPlanProcessed" & `Plan(1=YES) ` == 1) #27 plans
+  #clean up text
+  text_clean <- text %>%
+    tm_map(f_weirdos,"[^[:alnum:] ]") %>% #gets rid of form feed (/f) and euro symbol, but not a accents
+    tm_map(f_weirdos,"Ã¢") %>% #remove accents
+    tm_map(removePunctuation) %>% #Remove punctuation marks
+    tm_map(removeNumbers) %>% #Remove numbers  
+    tm_map(tolower) %>% #Switch to lower case
+    tm_map(removeWords, all_stopwords) %>% #remove stopwords; want to remove stopwords 1st because they contain punctuation
+    tm_map(stripWhitespace)# %>% #Remove white space
+    
 
-WaterPlanProc_subset <- WaterPlanProc %>%
-  select(StateAbbreviation, Plan_Text) %>%
-  rename(doc_id = StateAbbreviation,
-         text = Plan_Text)
+  #create tdm and generate freq
+  tdm <- TermDocumentMatrix(text_clean) # turn it into a term document matrix
 
-WaterPlanProc_Corpus <- Corpus(DataframeSource(WaterPlanProc_subset))
+  m <- as.matrix(tdm)
+  freq <- sort(rowSums(m), decreasing = TRUE)
 
-tdm <- TermDocumentMatrix(WaterPlanProc_Corpus)
-m <- as.matrix(tdm)
-v <- sort(rowSums(m),decreasing=TRUE)
-d <- data.frame(word = names(v),freq=v)
+  #set colors
+  pal <- brewer.pal(9, "BuGn")
+  pal <- pal[-(1:2)]
 
-pal <- brewer.pal(9, "BuGn")
-pal <- pal[-(1:2)]
+  #print wordcloud to dashboard - adjust scale/max words as needed to make words fit on page
+  #wordcloud(words = names(freq), freq = freq, min.freq = 2, random.order = FALSE,
+   #         colors=pal, scale=c(4,.2), max.words=100, rot.per=.15)
 
-wordcloud(d$word,d$freq, scale=c(8,.3),min.freq=100,max.words=Inf, random.order=F, rot.per=.15, colors=pal, vfont=c("sans serif","plain"))
+  #if wanted to, save fig; else comment out
+  png(figname,width=8,height=8,units="in",res=1200)#, width=400,height=3000
+  layout(matrix(c(1, 2), nrow=2), heights=c(1, 4))
+  par(mar=rep(0, 4))
+  plot.new()
+  text(x=0.5, y=0.5, figname)
+  set.seed(915345) #for reproducibility purposes
+  wordcloud(words = names(freq), freq = freq, min.freq = 2, random.order = FALSE,
+            colors=pal, scale=c(4,.2), max.words=100, rot.per=.15)
+  dev.off()
+  
+  #return(text_clean)
+}
 
+
+# #now do some special corpus cleaning...order of functions matters!
+# DroughtPlans_text_clean <- WaterPlans_text %>%
+#   tm_map(f_weirdos,"[^[:alnum:] ]") %>% #gets rid of form feed (/f) and euro symbol, but not a accents
+#   tm_map(f_weirdos,"Ã¢") %>% #remove accents
+#   tm_map(content_transformer(tolower)) %>% #Switch to lower case
+#   tm_map(removeWords, all_stopwords) %>% #remove stopwords; want to remove stopwords 1st because they contain punctuation
+#   tm_map(removePunctuation) %>% #Remove punctuation marks 
+#   tm_map(removeNumbers) %>% #Remove numbers
 ```
 
+Generate word clouds for each plan
+```{r}
+#which df to focus on?
+WaterDroughtPlans_Raw <- WaterDroughtPlans %>% filter(!Plan_Type == "WaterPlanProcessed",
+                                                      !Plan_Type =="DroughtPlanProcessed")
 
-###Total Terms with Stopwords for Water Plans
+for (i in 1:32){#dim(WaterDroughtPlans_Raw)[1] - need to troubleshoot i=33, DE_DroughtPlanRaw
+  #create figname iteratively
+  figname = paste("./Figures/wordcloud",WaterDroughtPlans_Raw$State_Abbreviation[i],sep="_")
+  figname = paste(figname,WaterDroughtPlans_Raw$Plan_Type[i],sep="_")
+  figname = paste(figname, ".png",sep="")
+  print(figname)
+  
+  stopwrd = c(WaterDroughtPlans_Raw$State[i],WaterDroughtPlans_Raw$State_Abbreviation[i])
+  
+  #print(stopwrd)
+  
+  wordcloudRows(WaterDroughtPlans_Raw,i,stopwrd,figname) #issue at i=33, DE_DroughtPlanRaw
+  rm(i,stopwrd,figname)
+}
+
+# data quality issue - 
+# WaterDroughtPlans %>% 
+#   filter(State=="Delaware") %>%
+#   filter(Plan_Type == "DroughtPlanRaw") %>%
+#   select(Plan_Text)
+```
+
+### Total Terms with Stopwords for Water Plans
 
 It is easier to use the quanteda package for word searching, so we start by converting our VCorpus (from the tm package) to a quanteda corpus. 
 

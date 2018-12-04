@@ -1,0 +1,893 @@
+---
+title: "Governance and Physical Resources"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+rm(list=ls()) #clears variables in global environment :-)
+
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(root.dir = "//vu1file.it.vanderbilt.edu/VIEE/Shared/Water Security/Water Quality")
+getwd() #automatically has it out of the RCode directory
+#setwd("//vu1file.it.vanderbilt.edu/VIEE/Shared/Water Security")
+```
+####Packages needed
+```{r}
+#Include packages at top so they can all load at the start
+library(tidyverse) #includes ggplot2 (for plotting), dplyr (piping), tidyr, readr, tibble, purr
+library(reshape2) #for melt, dcast fns
+library(broom) #convert into tidy dfs
+library(readxl)
+library(stringr)
+
+StateList <- read.csv('../Data/RawData/StateList.csv')
+StateList$State <- as.character(StateList$State)
+```
+#Governance
+
+###Interstate compacts
+
+```{r}
+Interstate <- read_excel('../Data/RawData/InterstateCompacts.xlsx', 
+                             sheet = "Sheet1", skip = 1)
+Interstate$`Resolution (Click for Details)` <- NULL
+Interstate <- Interstate[complete.cases(Interstate),] #drop leading NAs
+
+Interstate_Categorical <- Interstate %>%
+  count(`Participating State(s)`, sort=TRUE) %>%
+  arrange(`Participating State(s)`)
+  
+#rename cols for clarity
+colnames(Interstate_Categorical) <- c("State","value")
+Interstate_Categorical$variable<-"Number of Interstate Water Compacts"
+
+#make sure all/only the 48 states are on the list
+FullInterstate <- merge(Interstate_Categorical, StateList, by = "State", all.y = TRUE)
+
+#replace NA's with 0's
+FullInterstate$value[is.na(FullInterstate$value)] <- 0 
+FullInterstate$variable<-"Number of Interstate Water Compacts"
+
+#write.csv(FullInterstate,"../Data/FormattedData/InterstateCompacts.csv")
+rm(FullInterstate,Interstate,Interstate_Categorical)
+```
+
+###Nutrient Trading Programs
+Binary variable (1=state=level trading program exists; 0=no trading program)
+
+```{r}
+Nutrient <- read_excel('../Data/RawData/NutrientTrading.xlsx', 
+                             sheet = "Sheet1")
+Nutrient$`Source: http://www.envtn.org/water-quality-trading/state-programs` <- NULL
+colnames(Nutrient)<-c("State","value")
+Nutrient$variable<-"State-Level Nutrient Trading Program"
+Nutrient$Notes <- "Binary: 1 = state-level trading program exists"
+
+Nutrient <- Nutrient %>%
+  select(State,value,variable,Notes)
+
+#write.csv(Nutrient,"../Data/FormattedData/NutrientTradingPrgrms.csv")
+rm(Nutrient)
+```
+
+###Climate Change Planning
+Discussion of Climate change in state water plan (Werner Svedin 2017), discussion of CC in hazard mitigation plan (Babcock 2013), state water agency practices as reported to EPA (EPA 2017) are all in the raw data. For simplicity, will just use the Werner and Svedin's analysis in the formatted data.
+
+Categorial variables in Werner and Svedin (2017) - Fig 2: 1 = No discussion/inaccurate discussion; 2 = Minimal mention; 3 = Accurate but limited discussion; 4 = Thorough discussion.
+
+```{r}
+Climate<-read_excel('../Data/RawData/ClimateChange.xlsx', 
+                             sheet = "Sheet1", skip = 1)
+Climate$`State Hazard Mitigation Plan discussion of Climate Change (Babcock 2013)` <- NULL
+Climate$`State Water Agency Practices for Climate Adaptation (EPA 2017)` <- NULL
+Climate[,3] <- NULL #weird error in: Climate$`Topic Area of State Practice (EPA 2017)\` <- NULL 
+
+Climate$Notes <- "Categorical: 1-None/Inaccurate disc; 2 - Minimal; 3- Accurate/Limited 4 - Thorough. Source: Werner and Svedin (2017)"
+
+Climate$variable<-"Discussion of Climate Change in plans"
+Climate <- merge(Climate, StateList, by.x = "State", by.y = "State_Abbreviation",all.y = TRUE)
+colnames(Climate)
+Climate$State <- NULL #deletes first instance, which is abbreviations
+colnames(Climate)[colnames(Climate) == "State Water Plan discussion of CC (Werner & Svedin 2017)"] <- "value"
+
+Climate <- Climate[c(4,1,3,2)]
+
+#write.csv(Climate,"../Data/FormattedData/ClimateInWaterPlans.csv")
+rm(Climate)
+```
+
+###Drought plans
+Develop proxies for water plan management using drought plans, the most available plan type across the states.
+
+The data was compiled by Rachel McKane.
+
+```{r}
+Droughts <- read_excel('../Data/RawData/StateWaterPlans/DroughtPlanSheet.xlsx', 
+                             sheet = "Sheet1")
+
+colnames(Droughts)
+
+#keep only select columns
+Droughts_subset <- Droughts %>%
+  select(State,`Drought Plan (1=Yes)`, `Page Count `, Year)
+
+#cross-check 48 states
+Droughts_states <- merge(Droughts_subset, StateList, by = "State") %>%
+  select(-State_Abbreviation)
+
+colnames(Droughts_states) <- c("State","DroughtPlan","DroughtPlan_PgCnt","DroughtPlan_Yr")
+
+#write.csv(Droughts_states,"../Data/FormattedData/StateDroughtPlansInfo.csv")
+rm(Droughts,Droughts_states,Droughts_subset)
+```
+
+
+###CWNS
+Clean Water Needs Survey 2012
+
+```{r}
+CWNS<-read.csv("../Data/RawData/CWNS2012.csv")
+
+CWNS <- CWNS %>%
+  select(State,Total.ON,Total.UCE,Total.ODN) %>% #these cols represent "Official Needs","Unofficial Cost Estimates","Other Documented Needs" respectively 
+  group_by(State) %>%
+  summarise_all(sum) %>%
+  melt(id = "State") %>%
+  group_by(State) %>%
+  summarise(TotalNeeds = sum(value))
+
+colnames(CWNS) <- c("State","value")
+CWNS$variable <- "Total Infrastructure Needs"
+CWNS$Units <- "Dollars"
+CWNS$Source <- "EPA Clean Water Needs Survey in 2012"
+
+#subset to 48 contiguous states
+CWNS <- merge(CWNS, StateList, by.x = "State", by.y = "State_Abbreviation",all.y = TRUE) #weird enough - no data for SC in the survey...
+CWNS$State <- NULL
+#repeat columns for SC info
+CWNS$variable <- "Total Infrastructure Needs"
+CWNS$Units <- "Dollars"
+CWNS$Source <- "EPA Clean Water Needs Survey in 2012"
+
+#reorder columns
+CWNS <- CWNS[c(5,1,2,3,4)] 
+
+#write.csv(CWNS,"../Data/FormattedData/CleanWaterNeeds.csv")
+rm(CWNS)
+```
+
+###CWSRF and DWSRF
+Federal Grants Received for clean water under revolving fund program and the drinking water state revolving fund since they both have to do with funding associated with water quality 
+
+```{r}
+#Should combine both CWSRF and CWSRF into a single variable 
+###Drinking Water State Revolving Fund
+DWSRF <- read_excel('../Data/RawData/DWSRF.xlsx')
+
+DWSRF_Summarize <- DWSRF %>%
+  select(State, `Total Amount `, Units, Variable) %>%
+  group_by(State) %>%
+  summarize(TotalAmount = sum(`Total Amount `))
+
+DWSRF_Summarize$variable <- "Total Amount (DWSRF)"
+DWSRF_Summarize$Year <- "1996-2016"
+DWSRF_Summarize$Source <- "DWSRF"
+
+#Onto CWSRF...
+CWSRF<-read_excel('../Data/RawData/CWSRF2016.xlsx')
+
+#filter to the 48 states of interest
+DWSRF_Summarize$State <- gsub("[[:space:]]*$", "",DWSRF_Summarize$State) #turns out there is a weird space in the states that's affecting the merging so need to remove that; need to only remove the trailing whitespace since some of the states have two word names
+DW_QC <- merge(DWSRF_Summarize, StateList, by = "State", all.y = TRUE) #48 states only, all populated!
+
+#explore data within the file
+CWSRF$HeaderName <- as.factor(CWSRF$HeaderName)
+#levels(CWSRF$HeaderName) #only one of real interest is: "Federal Grants (Dollars)"
+
+CWSRF$RowName <- as.factor(CWSRF$RowName)
+#levels(CWSRF$RowName) #only one of real interest is: "*Total Annual Federal Grants"  
+
+CWSRF_Summarize <- CWSRF %>%
+  select(-ReportRow) %>%
+  filter(HeaderName %in% "Federal Grants (Dollars)") %>%
+  filter(RowName %in% "*Total Annual Federal Grants") %>%
+  melt(id=c("State","HeaderName","RowName"))
+
+CWSRF_Summarize$variable <- as.numeric(as.character(CWSRF_Summarize$variable)) #silly factor issue
+
+CWSRF_Summarize <- CWSRF_Summarize %>%
+  filter(variable > 1995 & variable < 2017) %>% #DWSRF data is limited to these 21 years...
+  group_by(State) %>%
+  summarize(TotalAmount = sum(value)) #summarize data from 1996 to 2016 into single value
+
+CWSRF_Summarize$variable <- "Cumulative Federal Grants (CWSRF)"
+CWSRF_Summarize$Year <- "1996-2016"
+CWSRF_Summarize$Source <- "CWSRF"
+
+CombinedFunds <- rbind(CWSRF_Summarize,DWSRF_Summarize)
+CombinedFunds$State <- as.factor(CombinedFunds$State)
+
+CombinedFunds <- CombinedFunds %>%
+  group_by(State) %>%
+  summarise(value = sum(TotalAmount)) 
+
+CombinedFunds_48 <- merge(CombinedFunds, StateList, by = "State", all.y = TRUE) #48 states only, all populated!
+
+CombinedFunds_48$variable <- "Cumulative Federal Grants (CWSRF and DWSRF)"
+CombinedFunds_48$Units <- "Dollars"
+CombinedFunds_48$Notes <- "CWSRF and DWSRF data between 1996-2016"
+CombinedFunds_48$State_Abbreviation <- NULL
+
+#write.csv(CombinedFunds_48,"../Data/FormattedData/FederalGrantsAwarded.csv")
+rm(CombinedFunds,CombinedFunds_48,CWSRF,CWSRF_Summarize,DWSRF,DWSRF_Summarize,DW_QC)
+```
+
+###Parties in State Legislature
+Party in control of state legislature, 1978-2016. Nebraska has unicameral, non-partisan state legislature = NA.
+
+The StateLegParty1990-2017.xls document has number of seats held by each house of the legislature but the website also contains summary info about the leading party in each state that's available in pdfs and has been summarized into the state "PartyControl1978-2016.csv" file
+
+```{r}
+Parties<-read.csv("../Data/RawData/PartyControl1978-2016.csv")
+
+Parties_48 <- merge(Parties, StateList, by = "State", all.y = TRUE) 
+
+Parties_48 <- Parties_48 %>%
+  melt(id="State") 
+
+Parties_48$value[is.na(Parties_48$value)] <- "NP" #less troublesome of a label :-)
+Parties_48$variable <- gsub("X","",Parties_48$variable) #remove leading "X" marker
+Parties_48$variable <- as.numeric(Parties_48$variable)
+
+Parties_48_count <- Parties_48 %>%
+  filter(variable > 1998) %>% #over last 10 state elections
+  group_by(State,value) %>%
+  summarise(counter = n()) %>%
+  #dcast(State ~ value, value.var = "counter")
+  filter(counter == max(counter)) %>%
+  mutate(Percentage = counter/10*100) 
+
+#Indiana has a 5-5 Rep-Split while Nevada has a 4-4 Dem-Split  so will just keep the dominant party for these 2 states
+Parties_48_count %>%
+  filter(State %in% c("Indiana","Nevada")) %>%
+
+Parties_48_final <- Parties_48_count[!(Parties_48_count$State=="Indiana" & Parties_48_count$value=="Split"),]
+Parties_48_final <- Parties_48_final[!(Parties_48_final$State=="Nevada" & Parties_48_final$value=="Split"),]
+
+#update column names
+colnames(Parties_48_final)[colnames(Parties_48_final) == "value"] <- "State Leading Party"
+colnames(Parties_48_final)[colnames(Parties_48_final) == "Percentage"] <- "Percentage_State Leading Party"
+
+Parties_48_final <- Parties_48_final %>%
+  select(-counter) %>%
+  melt(id="State")
+
+Parties_48_final$Notes <- "State Legislature power between 2000-2016"
+
+#write.csv(Parties_48_final,"../Data/FormattedData/StateLegislatureParties.csv")
+rm(Parties, Parties_48,Parties_48_count, Parties_48_final)
+
+# #Brief exploration of the xls document...
+# Parties_Upper <- read_excel('../Data/RawData/StateLegParty1990-2017.xls', sheet = "Upper", skip = 2) #note: data is of Aug 2017
+# #replicate year info across the rows
+# 
+# Parties_upper_t <- as.data.frame(t(Parties_Upper))
+# Parties_upper_t <- rownames_to_column(Parties_upper_t, var= "Year")
+# 
+# while(length(ind <- which(Parties_upper_t$Year == "")) > 0){
+#   Parties_upper_t$Year[ind] <- Parties_upper_t$Year[ind -1]
+# }
+# 
+# Parties_Upper_Yrs <- as.data.frame(t(Parties_upper_t))
+# colnames(Parties_Upper_Yrs) <- paste(as.character(unlist(Parties_Upper_Yrs[1,])),as.character(unlist(Parties_Upper_Yrs[2,])),sep="_")
+# Parties_Upper_Yrs<- Parties_Upper_Yrs[-2,] #delete states row
+# Parties_Upper_Yrs<- Parties_Upper_Yrs[-1,] #delete years row
+# 
+# colnames(Parties_Upper_Yrs)[1] <- "State"
+# 
+# Parties_Upper_Yrs$State <- gsub("\\*","",Parties_Upper_Yrs$State) #get rid of weird asterisks
+# 
+# #filter for the 48 states
+# Parties_Upper_Yrs_48 <- merge(Parties_Upper_Yrs, StateList, by = "State", all.y = TRUE) #48 states only, all populated!
+# rm(Parties, Parties_Upper, Parties_upper_t, Parties_Upper_Yrs, Parties_Upper_Yrs_48)
+```
+
+###Federal voting margin
+per JG's earth future's analysis...
+
+averaged over the 2008 and 2012 elections. "partisan political leanings of states and MSA's by the Cook Partisan Voting Index (PVI) Wasserman [2013]. The index measures the difference between 70 the percentage of the two-party vote received by Democratic presidential candidates in a city or MSA and the percentage received in the national election. Positive or negative values indictate a city or state leans Democratic or Republican, respectively, relative to the national average."
+
+Findings." States with more positive (Democratic-leaning) PVI have greater propensity to adopt conservation policies, as do MSAs whose PVI is greater (more likely to vote Democratic) than the rest of the state.. TODO: discuss robustness with respect to consistency about state-level aridity and PVI across all models. What emerges in the big picture is that cities in states with higher (more Democratic-leaning) PVI's and more arid climates tend to adopt more conservation measures, including more requirements and more rebates"
+
+(Positive PVI indicates a greater Democratic vote share than the national average and negative PVI a greater Republican vote share)
+
+
+```{r}
+PVI <- read_csv('../Data/RawData/pvi_by_state.csv')
+
+#filter for 48 states
+PVI_48 <- merge(PVI, StateList, by.x = "state.abb", by.y = "State_Abbreviation", all.y = TRUE)
+
+PVI_48 <- PVI_48 %>%
+  select(State, pvi)
+
+colnames(PVI_48)[colnames(PVI_48) == "pvi"] <- "value"
+PVI_48$variable <- "Cook's Partisan Voting Index"
+PVI_48$Units <- "Index"
+PVI_48$Year <- "2008 and 2012 elections"
+PVI_48$Notes <- "Positive values indicate greater Dem vote rel. to natioanl avg (vv for negative PVI and Rep votes). Source: JG's Earth Future Paper"
+
+#write.csv(PVI_48,"../Data/FormattedData/PVI.csv")
+rm(PVI, PVI_48)
+```
+
+###Sewage Disposal
+all homes 1970, 1980, 1990 is from the census while we have limited information about new homes built 2009-2016. For now, just going to process rate of homes in each state on public sewer as of 1990
+
+```{r}
+Sewage<-read_excel('../Data/RawData/SewageDisposal.xlsx', sheet = "SewageDisposal70_90", col_names = FALSE)
+
+#fix colnames
+colnames(Sewage) <- paste(as.character(unlist(Sewage[1,])),as.character(unlist(Sewage[2,])),sep="_")
+Sewage<- Sewage[-2,] #delete #/% row
+Sewage<- Sewage[-1,] #delete type of disposal row
+
+Sewage$NA_Year <- as.numeric(Sewage$NA_Year)
+
+Sewage_final <- Sewage %>%
+  filter(NA_Year == 1990) %>% #only keep 1990 data
+  select(NA_State,NA_Year,`Public Sewer_Percent`)
+
+colnames(Sewage_final) <- c("State","Year","value")
+Sewage_final$value <- as.numeric(Sewage_final$value)
+Sewage_final$value <- Sewage_final$value*100 #so values are actual %s
+
+#filter to continguous 48 states
+Sewage_final_48 <- merge(Sewage_final, StateList, by.x = "State", by.y = "State_Abbreviation", all.y = TRUE) #48 states only, all populated!
+Sewage_final_48$State <- NULL #deletes first instance of abbrevations
+Sewage_final_48 <- Sewage_final_48[c(3,2,1)]#reorder columns
+
+#metadata columns
+Sewage_final_48$Units <- "Percentage"
+Sewage_final_48$variable <- "Populace on Public Sewer"
+Sewage_final_48$Notes <- "Source: US Census"
+
+#write.csv(Sewage_final_48,"../Data/FormattedData/SewageDisposal1990.csv")
+rm(Sewage,Sewage_final,Sewage_final_48)
+```
+
+###Affordability
+Mack's research that highlights the % of state tracts in each state with high risk for drinking water affordability issues
+
+```{r}
+Affordability <-read_excel('../Data/RawData/WaterBill.xlsx', sheet = "waterbill")
+colnames(Affordability)
+
+Affordability$value <- 100 * (Affordability$`Percent of State's Tracts AtRisk` + Affordability$`Percent of State's Tracts HighRisk`)
+
+Affordability <- Affordability %>%
+  select(State,value)
+
+#Ensure all 48 contiguous state are on the list
+Affordability_final <- merge(Affordability, StateList, by = "State", all.y = TRUE) #48 states only, all populated!
+Affordability_final$State_Abbreviation <- NULL 
+
+Affordability_final$Units <- "Percentage"
+Affordability_final$variable <- "State Tracts at either High Risk or At-Risk for water poverty or unaffordable water svs"
+Affordability_final$Year <- 2015
+Affordability_final$Source <- "Mack and Wrase (2017)"
+
+#write.csv(Affordability_final,"../Data/FormattedData/WaterPovertyRisk.csv")
+rm(Affordability,Affordability_final)
+```
+
+###Public Supply 
+Proportion of state populace on public supply for drinking water, 1960-2010
+Issues with provenance still need to be resolved with Brandi (i.e., what the variables are measuring exactly)
+
+```{r}
+PublicSupply<-read.csv("../Data/RawData/PublicSupplyByState1960_2010.csv")
+
+#rename columns 
+colnames(PublicSupply)[colnames(PublicSupply) == "ï.."] <- "State"
+colnames(PublicSupply)[colnames(PublicSupply) == "X2010"] <- "value"
+
+PublicSupply <- PublicSupply %>%
+  select(State, value)
+
+PublicSupply_QC <- merge(PublicSupply, StateList, by = "State", all.y = TRUE) #48 states only, all populated!
+
+PublicSupply$value <- PublicSupply$value * 100 #convert to actual percents
+
+PublicSupply$Units <- "Percentage"
+PublicSupply$Year <- 2010
+PublicSupply$variable <- "Populace on public supply for drinking water"
+PublicSupply$Notes <- "Source: USGS"
+
+#write.csv(PublicSupply,"../Data/FormattedData/PublicSupply_DW.csv")
+rm(PublicSupply, PublicSupply_QC)
+```
+
+###Waterborne Illnesses 
+from drinking water, recreational waters, and environmental or undetermined waters
+FY2011-2012. Other years (to 1971) available at https://www.cdc.gov/healthywater/surveillance/index.html
+```{r}
+#Illnesses by Drinking Water
+DW_Illness <-read_excel('../Data/RawData/outbreaks_dw20112012.xlsx', skip = 1)
+DW_Illness <- DW_Illness[,-c(14,15)] #weird empty trailing columns
+
+#rename columns of interest
+colnames(DW_Illness)[colnames(DW_Illness) == "State/ Jurisdiction "] <- "State"
+colnames(DW_Illness)[colnames(DW_Illness) == "No. cases "] <- "value"
+
+DW_Illness <- DW_Illness %>%
+  select(State, value) %>%
+  group_by(State) %>%
+  summarise(value = sum(value))
+
+DW_Illness$State <- gsub("[[:space:]]*$", "",DW_Illness$State) #fix trailing spaces after state names
+DW_Illness_48 <- merge(DW_Illness, StateList, by = "State", all.y = TRUE)
+DW_Illness_48$variable <- "DW"
+
+#Illnesses by Recreational Water
+Rec_Illness <-read_excel('../Data/RawData/outbreaks_rw20112012.xlsx', skip = 1)
+
+colnames(Rec_Illness)[colnames(Rec_Illness) == "Jurisdiction "] <- "State"
+colnames(Rec_Illness)[colnames(Rec_Illness) == "No. cases§ "] <- "value"
+
+Rec_Illness <- Rec_Illness %>%
+  select(State, value) %>%
+  group_by(State) %>%
+  summarise(value = sum(value))
+
+Rec_Illness$State <- gsub("[[:space:]]*$", "",Rec_Illness$State) #fix trailing spaces after state names
+Rec_Illness_48 <- merge(Rec_Illness, StateList, by = "State", all.y = TRUE)
+Rec_Illness_48$variable <- "Rec"
+
+#Illnesses by environmental water
+Env_Illness <-read_excel('../Data/RawData/outbreaks_euw20112012.xlsx', skip = 1)
+
+colnames(Env_Illness)[colnames(Env_Illness) == "State/Jurisdiction "] <- "State"
+colnames(Env_Illness)[colnames(Env_Illness) == "No. cases "] <- "value"
+
+Env_Illness <- Env_Illness %>%
+  select(State, value) %>%
+  group_by(State) %>%
+  summarise(value = sum(value))
+
+Env_Illness$State <- gsub("[[:space:]]*$", "",Env_Illness$State) #fix trailing spaces after state names
+Env_Illness_48 <- merge(Env_Illness, StateList, by = "State", all.y = TRUE)
+Env_Illness_48$variable <- "Env"
+
+#All Illnesses together
+waterillness<-rbind(DW_Illness_48,Rec_Illness_48,Env_Illness_48)
+waterillness$value[is.na(waterillness$value)] <- 0 #replace NAs with 0s
+waterillness$State_Abbreviation <- NULL
+
+waterillness_sum <- waterillness %>%
+  group_by(State) %>%
+  summarise(value = sum(value))
+
+waterillness_sum$variable <- "Water illnesses related to DW, Rec, and Env"
+waterillness_sum$Units <- "Number of Cases"
+waterillness_sum$Year <- "2011-2012"
+waterillness_sum$Notes <- "Source: CDC"
+
+#write.csv(waterillness_sum,"../Data/FormattedData/CDCWaterIllnesses.csv")
+rm(Env_Illness,Env_Illness_48,DW_Illness,DW_Illness_48,Rec_Illness,Rec_Illness_48,waterillness,waterillness_sum)
+```
+
+###Dams
+NID storage measured in Acre-Feet
+```{r}
+#Dams with water supply as primary purpose
+Supply<-read_excel("../Data/RawData/DamsWaterSupplyAllPurposes.xlsx")
+
+colnames(Supply)
+
+Supply <- Supply %>%
+  select(State, `Owner Type`, NIDID, `NID Storage`, `NID Height (Ft.)`, `Primary Purpose`) #only keep most pertinent data
+
+Supply <- Supply[complete.cases(Supply), ] #get rid of rows with NAs; only 1 that this applies to
+
+#Check to see what dams are in the hydroelectric dataset but not in the water supply dataset, esp. since the WaterSupply one has other uses as the primary purpose
+Hydro<-read_excel("../Data/RawData/DamsHydroelectricAllPurposes.xlsx")
+
+colnames(Hydro)
+
+Hydro <- Hydro %>%
+    select(State, `Owner Type`, NIDID, `NID Storage`, `NID Height (Ft.)`, `Primary Purpose`) #only keep most pertinent data
+
+#combine both dam uses 
+Dams_comparison <- merge(Supply, Hydro, by=c("NIDID","Owner Type","State","Primary Purpose","NID Storage","NID Height (Ft.)"), all = TRUE) #looks there were 372 dams that overlapped
+Dams_comparison$`Owner Type`[Dams_comparison$`Owner Type`=="-"]<-"Not Listed"
+
+Dams_Owner <- Dams_comparison %>%
+  select(State, `Owner Type`, `NID Storage`) %>%
+  group_by(State, `Owner Type`) %>%
+  summarise(Storage_AF = sum(`NID Storage`)) %>%
+  group_by(State) %>%
+  mutate(Total_AF = sum(Storage_AF)) %>%
+  mutate(Storage_Percent = Storage_AF/Total_AF * 100) %>% #% of each state's dams in different authorities
+  filter(Storage_Percent == max(Storage_Percent)) %>%
+  select(-Storage_AF)
+  #spread(`Owner Type`, Storage_Percent)
+
+colnames(Dams_Owner)[colnames(Dams_Owner) == "Owner Type"] <- "Leading Dam Owner"
+colnames(Dams_Owner)[colnames(Dams_Owner) == "Storage_Percent"] <- "Percentage_Leading Dam Owner"
+
+#only keep contiguous 48
+Dams_48 <- merge(Dams_Owner, StateList, by.x="State", by.y="State_Abbreviation", all.y = TRUE)
+Dams_48$State <- NULL
+Dams_48 <- Dams_48[c(4,2,1,3)]
+
+Dams_48_Total <- Dams_48 %>%
+  select(State,Total_AF) %>%
+  melt(id="State")
+
+Dams_48_Total$variable <- "Total Dam Storage"
+Dams_48_Total$Units <- "Acre-Ft"
+Dams_48_Total$Source <- "USACE NID as of 2015"
+
+Dams_48_Owners <- Dams_48 %>%
+  select(-Total_AF) %>%
+  melt(id = "State")
+
+Dams_48_Owners$Source <- "USACE NID as of 2015"
+
+#write.csv(Dams_48_Total, "../Data/FormattedData/TotalDamStorage.csv")
+#write.csv(Dams_48_Owners,"../Data/FormattedData/LeadingDamOwnership.csv")
+rm(Dams_48,Dams_48_Owners,Dams_48_Total,Dams_comparison,Dams_Owner,Hydro,Supply)
+```
+
+
+###State Withdrawals and State uses
+The original source file is https://water.usgs.gov/watuse/data/2010/USGSCircular1405-tables1-14.xlsx but I had already processed some of this data for the proposal. So in the interest of time, I will continue to work off the intermediate file. Note: the original file is saved in the RawData folder in case it's needed for verification.
+
+Note: raw values in MGDs
+
+```{r}
+WaterUse<-read_excel("../Data/RawData/State_MonthlyPrecip_Temp_WaterUse_ImpairedStreams.xlsx", sheet = "StateUse_MGD")
+
+#quick QC of 48 cont. states
+WaterUse_QC <- merge(WaterUse, StateList, by = "State", all.y = TRUE) #looks good :-) - all 48 states present and populated
+rm(WaterUse_QC)
+
+##----Total water use in the state 
+WaterUse_Total <- WaterUse %>%
+  select(State,Total) %>%
+  rename(value = Total) %>%
+  mutate(variable = "Total water use") %>%
+  mutate(Units = "Million gallons per day") %>%
+  mutate(Year = 2010) %>%
+  mutate(Notes = "Source: USGS Circular")
+
+#write.csv(WaterUse_Total, "../Data/FormattedData/TotalWaterUse.csv")
+rm(WaterUse_Total)
+
+##---Water use by percentage: sw vs gw
+WaterUse_Source <- WaterUse %>%
+  select(State, matches("GW|SW"), matches("Total")) %>% #contains only total gw and sw uses
+
+WaterUse_Source_TotalPercents <- WaterUse_Source %>%
+  mutate(Total = GW_Total + SW_Total) %>%
+  mutate(value = SW_Total / Total * 100) %>% #
+  select(State, value)
+
+WaterUse_Source_TotalPercents$variable <- "Surface water use relative to total water use"
+WaterUse_Source_TotalPercents$Units <- "Percentage"
+WaterUse_Source_TotalPercents$Year <- 2010
+WaterUse_Source_TotalPercents$Notes <- "Source: USGS Circular"
+
+#write.csv(WaterUse_Source_TotalPercents, "../Data/FormattedData/WaterUsebySource_SW.csv")
+rm(WaterUse_Source_TotalPercents, WaterUse_Source)
+
+##---water use by fresh vs saline across sw and gw
+WaterUse_Source_Saline <- WaterUse %>%
+  select(State, matches("GW|SW"), -matches("Fresh")) %>% #contains both saline and freshwater information by source
+  mutate(Total_Saline = GW_Saline + SW_Saline, Total_Total = GW_Total + SW_Total) %>%
+  melt(id = "State")
+
+#create better ID'ing variables
+WaterUse_Source_Saline$SplitString <- str_split(WaterUse_Source_Saline$variable, "_")
+WaterUse_Source_Saline$Source <- sapply(WaterUse_Source_Saline$SplitString,"[[",1) #sapply to get 1st element of gw vs sw
+WaterUse_Source_Saline$Quality <- sapply(WaterUse_Source_Saline$SplitString,"[[",2) #sapply to get 2nd element of saline vs total
+WaterUse_Source_Saline$SplitString <- NULL
+
+#calculate percentage of saline water use by source
+WaterUse_Source_Saline_Percents <- WaterUse_Source_Saline %>%
+  group_by(State, Source) %>%
+  mutate(SalinePercent = round(value/value[Quality == "Total"] * 100, 2)) %>%
+  filter(Quality %in% "Saline") %>%
+  select(State, SalinePercent, Source) %>%
+  as.data.frame()
+
+colnames(WaterUse_Source_Saline_Percents)[colnames(WaterUse_Source_Saline_Percents) == "SalinePercent"] <- "value"
+WaterUse_Source_Saline_Percents$variable <- "Saline water use relative to total water use by source"  
+WaterUse_Source_Saline_Percents$Units <- "Percentage"
+WaterUse_Source_Saline_Percents$Year <- 2010
+WaterUse_Source_Saline_Percents$Notes <- ".GW = groundwater, SW= surface water. Source: USGS Circular"
+
+#write.csv(WaterUse_Source_Saline_Percents, "../Data/FormattedData/WaterUsebySource_Quality.csv")
+rm(WaterUse_Source_Saline_Percents, WaterUse_Source_Saline)
+
+##----Water use by sector
+WaterUse_Sector <- WaterUse %>%
+  select(-matches("GW|SW")) %>%
+  melt(id="State") %>%
+  group_by(State) %>%
+  mutate(Percentage = round(value/value[variable == "Total"] * 100,2)) %>% #round to 2 decimal pnts
+  filter(!variable %in% "Total") %>%
+  select(-value) %>% #don't need the raw MGD #s
+  rename(value = Percentage) %>% #rename percentage column to value
+  rename(Sector = variable) %>%
+  mutate(variable = "Proportion of water use by sector") %>%
+  mutate(Units = "Percentage") %>%
+  mutate(Year = 2010) %>%
+  mutate(Notes = "Source: USGS Circular")
+
+#write.csv(WaterUse_Sector,"../Data/FormattedData/WaterUse_Sector.csv")
+rm(WaterUse, WaterUse_Sector)
+```
+
+###Electricity Generation
+Electricity generation by state for all fuels (utility-scale). 
+
+Also have data for Conventional Hydro and Pumped Hydro if that becomes important
+
+```{r}
+
+
+#net generation for all fuels, utility-scale in MGW
+Allfuels<-read.csv("../Data/RawData/NetGenAllFuelsByState2001_2016.csv",skip=4,na.strings = c("", "NA","--"))
+
+Allfuels_Clean <- Allfuels %>%
+  select(description, units, X2016) %>%
+  filter(complete.cases(.)) %>%
+  mutate(SplitString = str_split(description, " : ")) %>%
+  mutate(State = sapply(SplitString, "[[" , 1)) %>%
+  mutate(variable = sapply(SplitString, "[[" , 2)) %>%
+  filter(variable %in% "all sectors") %>%
+  rename(value = X2016) %>%
+  rename(Units = units) %>%
+  select(-SplitString, -description) %>%
+  mutate(Year = 2016) %>%
+  mutate(Notes = "Source: EIA. Producers include all commercial, industrial, electric power, electric utility, and independent power producers")
+
+Allfuels_Clean$variable <- "Net generation by all fuels and all utility-scale producers"
+Allfuels_Clean <- Allfuels_Clean[c(3,2,4,1,5,6)]
+
+#quick QC to ensure 48 contiguous are all populated
+Allfuels_Clean_QC <- merge(Allfuels_Clean, StateList, by="State", all.y = TRUE) #all good :-)
+
+#write.csv(Allfuels_Clean,"../Data/FormattedData/NetElectricityGeneration.csv")
+
+##---Hydropower as percentage of state's net generation 
+Conv_Hydro<-read.csv("../Data/RawData/NetGenConventionalHydroByState2001_2016.csv",skip=4,na.strings = c("", "NA","--","NM"))
+Pump_Hydro<-read.csv("../Data/RawData/NetGenPumpedHydroByState2001_2016.csv",skip=4,na.strings = c("", "NA","--","NM"))
+
+AllHydro <- rbind(Conv_Hydro,Pump_Hydro)
+
+Hydro_Clean <- AllHydro %>%
+  select(description, units, X2016) %>%
+  filter(complete.cases(.)) %>%
+  mutate(SplitString = str_split(description, " : ")) %>%
+  mutate(State = sapply(SplitString, "[[" , 1)) %>%
+  mutate(variable = sapply(SplitString, "[[" , 2)) %>%
+  filter(variable %in% "all sectors") %>%
+  rename(value1 = X2016) %>%
+  mutate(value = as.numeric(as.character(value1))) %>%
+  group_by(State) %>%
+  summarise(value = sum(value)) %>%
+  mutate(variable = "Net hydropower generation") %>%
+  mutate(Units = "thousand megawatthours") %>%
+  mutate(Year = 2016) %>%
+  mutate(Notes = "Source: EIA. Includes both conventional and pumped hydropower generation")
+
+#make sure all 48 states are in Hydro
+Hydro_Clean_48 <- merge(Hydro_Clean, StateList, by = "State", all.y = TRUE)
+
+Hydro_Clean_48 <- Hydro_Clean_48 %>%
+  select(-State_Abbreviation) %>%
+  mutate(variable = "Net hydropower generation") %>%
+  mutate(Units = "thousand megawatthours") %>%
+  mutate(Year = 2016) %>%
+  mutate(Notes = "Source: EIA. Includes both conventional and pumped hydropower generation") %>%
+  mutate(value = ifelse(is.na(value), 0, value)) #replace NAs with 0s
+
+Hydro_vs_Total <- rbind(Hydro_Clean_48,Allfuels_Clean)
+
+Hydro_Clean_Percent <- Hydro_vs_Total %>%
+  mutate(value = as.numeric(value)) %>%
+  group_by(State) %>%
+  mutate(Percentage = round(value/value[variable == "Net generation by all fuels and all utility-scale producers"] * 100, 2)) %>%
+  filter(variable %in% "Net hydropower generation") %>%
+  select(-value) %>% #get rid of hydropower in mwh
+  rename(value = Percentage) %>% #move value column to percentage
+  mutate(Units = "Percentage")
+
+#reorder columns for consistency
+Hydro_Clean_Percent <- Hydro_Clean_Percent[c(1,6,2,3,4,5)]
+
+#write.csv(Hydro_Clean_Percent,"../Data/FormattedData/PercentageofHydropowerGeneration.csv")
+rm(Allfuels, Allfuels_Clean, Allfuels_Clean_QC, AllHydro, Conv_Hydro, Hydro_Clean, Hydro_Clean_48, Hydro_Clean_Percent, Hydro_vs_Total, Pump_Hydro)
+```
+
+### Aridity Index
+Following JG's analysis, there is strong correlation between precipitation and temperature datasets so I will construct the Koppen aridity index, where AI = P/(T+33), with P in mm and T in C. Large values indicate wetter conditions and smaller values to drier conditions. 
+
+Monthly precipitation (in inches) 01/1895-12/2016
+Monthly average temperature (in degrees Farenheit) 01/1895-12/2016
+
+```{r}
+Precip<-read_excel("../Data/RawData/State_MonthlyPrecip_Temp_WaterUse_ImpairedStreams.xlsx", sheet = "Precip_Inches")
+Temp<-read_excel("../Data/RawData/State_MonthlyPrecip_Temp_WaterUse_ImpairedStreams.xlsx", sheet = "Temp_F")
+
+Precip_formatted <- Precip %>%
+  filter(! YrMo > 201612) %>% #subset out the four months of 2017 data
+  melt(id="YrMo") %>% 
+  rename(State = variable) %>%
+  mutate(value = value * 25.4) %>% #convert inches to mm
+  mutate(Year = substr(as.character(YrMo),1,4)) %>%
+  mutate(Month = substr(as.character(YrMo),5,6)) %>%
+  mutate(variable = "Precip_mm")
+
+Temp_formatted <- Temp %>%
+  filter(! YrMo > 201612) %>% #subset out the four months of 2017 data
+  melt(id="YrMo") %>% 
+  rename(State = variable) %>%
+  mutate(value = (value - 32) * 5 / 9) %>% #convert deg F to deg C
+  mutate(Year = substr(as.character(YrMo),1,4)) %>%
+  mutate(Month = substr(as.character(YrMo),5,6)) %>%
+  mutate(variable = "Temp_C")
+
+Met_data <- rbind(Precip_formatted, Temp_formatted)
+
+Met_data <- Met_data %>%
+  spread(variable, value) %>%
+  mutate(value = Precip_mm/(Temp_C + 33)) %>%
+  mutate(variable = "Koppen Aridity Index") %>%
+  mutate(Units = "Index") %>%
+  mutate(Notes = "Large value indicate wet conditions and v.v. Following JG's analysis, Koppen formula = P_mm/(T_C+33)") %>%
+  select(-Precip_mm, -Temp_C)
+#write.csv(Met_data,"../Data/FormattedData/AridityIndex_TimeSeries.csv")
+
+Met_data_annualavg_median <- Met_data %>%
+  group_by(State,Year) %>%
+  summarise(Annual_AI = mean(value)) %>% #calculate annual means
+  group_by(State) %>%
+  summarise(Median_AI = median(Annual_AI), Stdev_Interannual_AI = sd(Annual_AI)) %>% #calculate median of annual means
+  melt(id = "State") %>%
+  mutate(variable = ifelse(variable == "Median_AI", "Median of Annual Aridity Index", "Interannual Variability (Stdev of annual means)")) %>%
+  mutate(Year = "Jan 1895 - Dec 2016") %>%
+  mutate(Units = "Index") %>%
+  mutate(Notes = "Large value indicate wet conditions and v.v. Following JG's analysis, Koppen formula = P_mm/(T_C+33). Source: NOAA for met data.")
+
+Met_data_intraannual <- Met_data %>%
+  group_by(State,Month) %>%
+  summarize(MonthlyMeans_AI = mean(value)) %>%
+  group_by(State) %>%
+  summarize(Intraannual = sd(MonthlyMeans_AI)) %>%
+  melt(id = "State") %>%
+  mutate(variable = "Intraannual Variability (Stdev of monthly means)") %>%
+  mutate(Year = "Jan 1895 - Dec 2016") %>%
+  mutate(Units = "Index") %>%
+  mutate(Notes = "Large value indicate wet conditions and v.v. Following JG's analysis, Koppen formula = P_mm/(T_C+33). Source: NOAA for met data.")
+  
+AI_Stat_data <- rbind(Met_data_annualavg_median, Met_data_intraannual)
+
+#write.csv(AI_Stat_data,"../Data/FormattedData/AridityIndex_Median_Variability.csv")
+rm(Met_data,Met_data_annualavg_median,Met_data_intraannual,Precip,Precip_formatted,Temp, Temp_formatted, AI_Stat_data)
+```
+
+### Misc Variables from Water Conservation analysis
+In the interest of time, going to pull some extra variables from Hornberger et al (2015) WRR paper on variable correlations to a state's conservation practices. The raw data file is from GMH.
+
+```{r}
+Misc_data <- read_excel("../Data/RawData/data_48statesContiguous.xlsx", sheet = "awe_scores")
+
+colnames(Misc_data)
+
+Misc_data_select <- Misc_data %>%
+  select(state,score,kwh) %>%
+  filter(complete.cases(.)) %>% #get rid of weird trailing NAs
+  melt(id="state") %>%
+  rename(State = state) %>%
+  mutate(Units = ifelse(variable == "kwh","Kilowatthours", "Index")) %>%
+  mutate(Year = ifelse(variable == "kwh",2010, 2011)) %>%
+  mutate(variable = ifelse(variable == "kwh","Annual electricity use per capita","AWE Conservation Score")) %>%
+  mutate(Notes = "Source: Hornberger et al (2015) WRR, Table 1")
+  
+#write.csv(Misc_data_select,"../Data/FormattedData/ConservationScore_ElectricityUse.csv")
+rm(Misc_data,Misc_data_select)
+```
+
+###EPA Regions
+EPA Regions that each state belongs to
+
+```{r}
+EPARegions <- read_csv("../Data/RawData/EPA Regions.csv")
+
+#only keep 48 contiguous 48 states
+EPA_48 <- merge(EPARegions, StateList, by = "State_Abbreviation", all.y = TRUE) #all 48 there and populated :-)
+
+#Clean up df
+EPA_Final <- EPA_48 %>%
+  select(-State_Abbreviation) %>%
+  rename(value = `EPA Region`) %>%
+  mutate(variable = "EPA Regions") %>%
+  mutate(Units = "Region") 
+
+EPA_Final <- EPA_Final[c(3,1,4,5,2)]
+
+#write.csv(EPA_Final, "../Data/FormattedData/EPARegions.csv")
+rm(EPARegions,EPA_Final,EPA_48)
+```
+
+###Land Use
+Percentage of each state in the major land use categories. Original Units are 1000 acres
+
+```{r}
+LandUses <- read_excel("../Data/RawData/Summary_Table_1_major_uses_of_land_by_region_and_state_2012.xls", skip = 2)
+
+#keep complete cases
+LandUses_subset <- LandUses %>%
+  filter(complete.cases(.)) %>%
+  select(`Regions and States`, `Cropland  5/`, `Grassland pasture and range  5/`, `Forest-use land`, `Urban areas `, `Total land area 2/`) %>%
+  rename(State = `Regions and States`) %>% #rename columns into reasonable titles
+  rename(Cropland = `Cropland  5/`) %>%
+  rename(Grassland = `Grassland pasture and range  5/`) %>%
+  rename(Forest = `Forest-use land`) %>%
+  rename(Urban = `Urban areas `) %>%
+  rename(Total = `Total land area 2/`) %>%
+  mutate(Cropland = as.numeric(Cropland)) %>% #format columns into numeric
+  mutate(Grassland = as.numeric(Grassland)) %>%
+  mutate(Forest = as.numeric(Forest)) %>%
+  mutate(State = str_trim(State, side = "both")) #trim weird trailing white spaces
+
+#only keep 48 contiguous 48 states
+LandUses_48 <- merge(LandUses_subset, StateList, by = "State", all.y = TRUE) #all 48 there and populated :-)
+
+#Create final df
+LandUses_48_final <- LandUses_48 %>%
+  select(-State_Abbreviation) %>%
+  melt(id = "State") %>%
+  group_by(State) %>%
+  mutate(value = value/value[variable == "Total"] * 100) %>%
+  filter(!variable %in% "Total") %>%
+  mutate(variable = paste("Land Use",variable, sep =": ")) %>%
+  mutate(Units = "Percentage") %>%
+  mutate(Years = 2012) %>%
+  mutate(Notes = "Source: USDA ERS")
+
+#write.csv(LandUses_48_final, "../Data/FormattedData/LandUse.csv")
+rm(LandUses,LandUses_subset,LandUses_48, LandUses_48_final)
+```
+
+###Gross Domestic Product and Price Parity Index
+Gross domestic product is for all industries in the state
+
+"Regional Price Parities (RPPs) measure the differences in price levels across states and metropolitan areas for a given year and are expressed as a percentage of the overall national price level."
+
+Full web-links of the original data sources are in the excel document. PDFs of the screen shots of the website are also saved in the raw data folder if needed.
+
+```{r}
+GDP_RPP <- read_excel("../Data/RawData/State GSP&RPP - 2010.xlsx")
+
+colnames(GDP_RPP) <- c("State","Gross Domestic Product","Regional Price Parities","S","N")
+
+#only keep 48 contiguous 48 states
+GDP_RPP_48 <- merge(GDP_RPP, StateList, by.x = "State", by.y = "State_Abbreviation" ,all.y = TRUE) #all 48 there and populated :-)
+GDP_RPP_48$State <- NULL
+
+GDP_RPP_48_Final <- GDP_RPP_48 %>%
+  select(State, `Gross Domestic Product`, `Regional Price Parities`) %>%
+  melt(id = "State") %>%
+  mutate(value = ifelse(variable == "Gross Domestic Product", value * 1000000, value)) %>% #convert GSP units from millions of dollars to dollars
+  mutate(Units = ifelse(variable == "Gross Domestic Product", "Dollars (Current value)", "Index")) %>% 
+  mutate(Year = 2010) %>%
+  mutate(Notes = "Source: US Bureau of Economic Analysis")
+
+#write.csv(GDP_RPP_48_Final, "../Data/FormattedData/GDP_RPP.csv")
+rm(GDP_RPP,GDP_RPP_48,GDP_RPP_48_Final)
+```

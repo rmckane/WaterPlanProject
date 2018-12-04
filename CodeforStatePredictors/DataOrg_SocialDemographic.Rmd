@@ -1,0 +1,231 @@
+---
+title: "SocioDemographic"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+rm(list=ls()) #clears variables in global environment :-)
+
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(root.dir = "//vu1file.it.vanderbilt.edu/VIEE/Shared/Water Security/Water Quality")
+getwd() #automatically has it out of the RCode directory
+#setwd("/vu1file.it.vanderbilt.edu/VIEE/Shared/Water Security")
+```
+
+####Packages needed
+```{r}
+#Include packages at top so they can all load at the start
+library(tidyverse) #includes ggplot2 (for plotting), dplyr (piping), tidyr, readr, tibble, purr
+library(reshape2) #for melt, dcast fns
+library(broom) #convert into tidy dfs
+library(dplyr)
+library(tidyr)
+library(readxl)
+library(stringr)
+
+StateList <- read.csv('../Data/RawData/StateList.csv')
+StateList$State <- as.character(StateList$State)
+```
+
+###Urban Population
+Data represents percentage of population that's urban in each state for a given census period
+
+```{r}
+urban <- read_excel('../Data/RawData/pop-urban-pct-historical.xlsx', sheet = "States", skip = 5)
+colnames(urban)
+
+urban_subset <- urban[c("Area Name","2010", "2000")] %>% #only keep the most pertinent columns
+  filter(complete.cases(.))  #get rid of trailing NAs
+
+#only keep the 48 contiguous states
+urban_subset_48 <- merge(urban_subset, StateList, by.x= 'Area Name', by.y = "State", all.y = TRUE) #looks good - all 48 populated
+
+urban_final <- urban_subset_48 %>%
+  rename(UrbanPercent_2010 = `2010`) %>% #renaming columns for clarity
+  rename(UrbanPercent_2000 = `2000`) %>% #renaming columns for clarity
+  rename(State = `Area Name`) %>%
+  mutate(UrbanGrowthRate = UrbanPercent_2010 - UrbanPercent_2000) %>% #calculating growth rate in urban between two years
+  select(State, UrbanPercent_2010, UrbanGrowthRate) %>% #keep select columns
+  melt(id = "State") %>%
+  mutate(Units = "Percentage") %>% #add metadata
+  mutate(Units = ifelse(variable == "UrbanPercent_2010", 2010, "2000-2010")) %>% #2010 data for urban percentage and 2000-2010 for growth rate data
+  mutate(Notes = "Source: ICIP Data") #Full link: https://www.icip.iastate.edu/tables/population/urban-pct-states 
+
+#write.csv(urban_final,'../Data/FormattedData/UrbanPercent_Growth.csv')
+rm(urban, urban_48,urban_final,urban_subset,urban_subset_48)
+```
+
+
+###Population
+Best to use the population estimate column for 2010-2017 for consistency sake
+
+```{r}
+population<-read_csv("../Data/RawData/population.csv", skip = 1)
+
+population_subset <- population %>%
+  select(Geography, matches("Population Estimate"))
+
+#contiguous 48
+population_subset_48 <-merge(population, StateList, by.x = "Geography", by.y = "State", all.y = TRUE)
+
+#calculate population growth rate and clean up df
+population_final <- population_subset_48 %>%
+  rename(State = Geography) %>%
+  select(State, matches("Population Estimate")) %>%
+  melt(id = "State") %>%
+  filter(variable %in% c("Population Estimate (as of July 1) - 2010","Population Estimate (as of July 1) - 2016")) %>%
+  mutate(GrowthRate = ((value-value[variable == "Population Estimate (as of July 1) - 2010"]) / value[variable == "Population Estimate (as of July 1) - 2010"]) * 100 / 7) %>% #formula is ((now-past)/past)/#of yrs * 100%, http://pages.uoregon.edu/rgp/PPPM613/class8a.htm 
+  filter(variable %in% "Population Estimate (as of July 1) - 2016") %>%
+  melt(id = "State") %>%
+  filter(!value %in% "Population Estimate (as of July 1) - 2016") %>%
+  mutate(variable = ifelse(variable == "GrowthRate","Annual Population Growth Rate","Population Size")) %>%
+  mutate(Year = ifelse(variable == "Annual Population Growth Rate", "2010-2016", 2016)) %>%
+  mutate(Units = ifelse(variable == "Annual Population Growth Rate", "Percentage", "Count")) %>%
+  mutate(Notes = "Source: US Census Bureau")
+
+#write.csv(population_final,'../Data/FormattedData/PopulationSize_Growth.csv')
+rm(population, population_final, population_subset, population_subset_48)
+```
+
+
+##Education
+Extract percentage of state population with high school, undergrad, and grad education between 2011-2015
+
+
+```{r}
+education <- read_csv("../Data/RawData/education.csv") 
+
+education_subset <- education %>%
+  select(`GEO.display-label`,HC01_VC95, HC01_VC96, HC01_VC92) #contains 2011-2015 years for high school, undergrad, and grad; if 2006-2010 are also needed, include HC02_VC95, HC02_VC96, HC02_VC92
+
+colnames(education_subset) <-education_subset[1, ] # making the first row the new column names 
+education_subset <- education_subset [-1, ] # deleting the duplicate 
+
+#only keep 48 contiguous 48 states
+education_subset_48 <- merge(education_subset, StateList, by.x = "Geography", by.y = "State", all.y = TRUE) #all 48 there and populated :-)
+
+#create final df
+education_final <- education_subset_48 %>%
+  select(-State_Abbreviation) %>%
+  rename(State = Geography) %>%
+  melt(id="State") %>%
+  mutate(SplitString = str_split(variable, "([ - ])")) %>%
+  mutate(variable = sapply(SplitString, "[[" , 7)) %>% #extract key word
+  mutate(variable = ifelse(variable == "high", "Education: High School or higher",
+                           ifelse(variable == "bachelor's", "Education: Bachelor's or higher", "Education: Graduate or Professional degree"))) %>% #rename sensibly
+  mutate(Year = sapply(SplitString, "[[" , 1)) %>%
+  select(-SplitString) %>%
+  mutate(Units = "Percentage") %>%
+  mutate(Notes = "Source: U.S. Census Bureau, American Community Survey 5-Year Estimates")
+  
+#write.csv(education_final,'../Data/FormattedData/Education.csv')
+rm(education,education_final,education_subset,education_subset_48)
+```
+
+###Race and Ethnicity 
+Note: hispanic or latino is an ethnicity whereas white/black are races
+
+```{r}
+RaceEthnicity <- read_csv("../Data/RawData/race_age.csv") 
+
+RaceEthnicity_subset <- RaceEthnicity %>%
+  select(`GEO.display-label`,HC01_VC94, HC01_VC88, HC01_VC95) #contains 2011-2015 years; if 2006-2010 are also needed, include HC02_VC94, HC02_VC88, HC02_VC95
+
+colnames(RaceEthnicity_subset) <-RaceEthnicity_subset[1, ] # making the first row the new column names 
+RaceEthnicity_subset <- RaceEthnicity_subset [-1, ] # deleting the duplicate 
+
+#only keep 48 contiguous 48 states
+RaceEthnicity_subset_48 <- merge(RaceEthnicity_subset, StateList, by.x = "Geography", by.y = "State", all.y = TRUE) #all 48 there and populated :-)
+  
+#Create final df
+RaceEthnicity_final <- RaceEthnicity_subset_48 %>%
+  select(-State_Abbreviation) %>%
+  rename(State = Geography) %>%
+  melt(id="State") %>%
+  mutate(SplitString = str_split(variable, "([ - ])")) %>%
+  mutate(variable = sapply(SplitString, "[[" , 17)) %>% #extract key word
+  mutate(variable = ifelse(variable == "White", "White (Non-Hispanic-Latino)",
+                           ifelse(variable == "Black", "Black (Non-Hispanic-Latino)", "Total Hispanic-Latino (of any race)"))) %>% #rename sensibly
+  mutate(Year = sapply(SplitString, "[[" , 1)) %>%
+  select(-SplitString) %>%
+  mutate(Units = "Percentage") %>%
+  mutate(Notes = "Source: U.S. Census Bureau, American Community Survey 5-Year Estimates")
+  
+#write.csv(RaceEthnicity_final,'../Data/FormattedData/RaceEthnicity.csv')
+rm(RaceEthnicity,RaceEthnicity_final,RaceEthnicity_subset,RaceEthnicity_subset_48)
+```
+
+###Age
+Extract median age and % of people over 62+ and % of ppl between 20-34 years
+
+```{r}
+Age <- read_csv("../Data/RawData/race_age.csv")
+
+Age_subset <- Age %>%
+  select(`GEO.display-label`,HC01_VC23, HC01_VC12, HC01_VC13,HC01_VC28) #contains 2011-2015 years; if 2006-2010 are also needed, include HC02_VC23, HC02_VC12, HC02_VC13, HC02_VC28
+
+colnames(Age_subset) <-Age_subset[1, ] # making the first row the new column names 
+Age_subset <- Age_subset [-1, ] # deleting the duplicate 
+
+#only keep 48 contiguous 48 states
+Age_subset_48 <- merge(Age_subset, StateList, by.x = "Geography", by.y = "State", all.y = TRUE) #all 48 there and populated :-)
+  
+#Create final df
+Age_final <- Age_subset_48 %>%
+  select(-State_Abbreviation) %>%
+  rename(State = Geography) %>%
+  melt(id="State") %>%
+  mutate(SplitString = str_split(variable, "([ - ])")) %>%
+  mutate(variable = sapply(SplitString, "[[" , 7)) %>% #extract key word
+  mutate(variable = ifelse(variable == "Median", "Median Age",
+                           ifelse(variable == "20", "20 to 24", 
+                                  ifelse(variable == "25", "25 to 34", "62 and over")))) %>% #rename sensibly
+  select(-SplitString) %>%
+  spread(variable, value) %>%
+  mutate(`20 to 24` = as.numeric(`20 to 24`)) %>%
+  mutate(`25 to 34` = as.numeric(`25 to 34`)) %>%
+  mutate(`20 to 34` = `20 to 24` + `25 to 34`) %>% #combine these two groups together
+  melt(id = "State") %>%
+  filter(!variable %in% c("20 to 24", "25 to 34")) %>%
+  mutate(Year = "2011-2015") %>%
+  mutate(Units = ifelse(variable == "Median Age", "Years", "Percentage")) %>%
+  mutate(Notes = "Source: U.S. Census Bureau, American Community Survey 5-Year Estimates")
+  
+#write.csv(Age_final,'../Data/FormattedData/Age.csv')
+rm(Age_final,Age,Age_subset,Age_subset_48)
+```
+
+
+###Labor
+
+
+```{r}
+Labor <- read_csv("../Data/RawData/labor.csv")
+
+Labor_subset <- Labor %>%
+  select(`GEO.display-label`, HC01_VC06, HC01_VC12,HC01_VC162, HC01_VC50, HC01_VC51, HC01_VC52, HC01_VC55, HC01_VC85) #contains 2011-2015 years; if 2006-2010 are also needed, include: HC02_VC06, HC02_VC12, HC02_VC162, HC02_VC50, HC02_VC51, HC02_VC52, HC02_VC55, HC02_VC85  
+
+colnames(Labor_subset) <-Labor_subset[1, ] # making the first row the new column names 
+Labor_subset <- Labor_subset [-1, ] # deleting the duplicate 
+
+#only keep 48 contiguous 48 states
+Labor_subset_48 <- merge(Labor_subset, StateList, by.x = "Geography", by.y = "State", all.y = TRUE) #all 48 there and populated :-)
+
+#Columns are crazy weird so renaming ahead of time
+colnames(Labor_subset_48) <- c("State","Employed (16 years and over)","Unemployment Rate","Below Poverty Level","Employed in Ag_Fishing_Mining",
+                               "Employed in Construction", "Employed in Manufacturing","Employed in Transportation","Median Household Income", "State_Abbreviation")
+
+#Create final df
+Labor_final <- Labor_subset_48 %>%
+  select(-State_Abbreviation) %>%
+  melt(id="State") %>%
+  mutate(Year = "2011-2015") %>%
+  mutate(Units = ifelse(variable == "Median Household Income", "Dollars (Inflation-Adjusted)", "Percentage")) %>%
+  mutate(Notes = "Source: U.S. Census Bureau, American Community Survey 5-Year Estimates")
+
+#write.csv(Labor_final,'../Data/FormattedData/Labor.csv')
+rm(Labor, Labor_final, Labor_subset, Labor_subset_48)
+```
+

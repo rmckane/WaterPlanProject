@@ -1,0 +1,178 @@
+---
+title: "CorpustoDF"
+author: "TG"
+date: "September 25, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+rm(list=ls())
+#library(qdap)
+getwd()#TG: "Z:/Documents/Projects/Vanderbilt/State Water Plans/StateWaterPlans/WaterPlanProject"
+```
+
+```{r}
+library(tidyverse)
+library(tidytext)
+library(tidyr)
+```
+
+## Read in state info and combine with other state characteristics
+
+```{r}
+list.files(pattern=".Rds", ignore.case=TRUE)
+
+#clean up state list info and combine with other state characteristics
+StateList <- readRDS("StateList.Rds") %>%
+  filter(!is.na(State)) %>%#remove NAs 
+  data.frame() 
+
+#split up dept, page info, etc.
+StateList_WPRaw <- StateList %>%
+  filter(Plan_Type == c("WaterPlanRaw")) %>%
+  select(-Plan_Type)
+
+StateList_WPProc <- StateList %>%
+  filter(Plan_Type == c("WaterPlanProcessed")) %>%
+  select(-Plan_Type) 
+
+StateList_WP <- merge(StateList_WPRaw,StateList_WPProc) %>%
+  rename(WP_Present = Plan.1.YES.,
+         WP_Dept = Department,
+         WP_PgCnt = Page_Count,
+         WP_Yr = Year)
+#rm(StateList_WPRaw,StateList_WPProc)
+
+StateList_DPRaw <- StateList %>%
+  filter(Plan_Type == c("DroughtPlanRaw")) %>%
+  select(-Plan_Type)
+
+StateList_DPProc <- StateList %>%
+  filter(Plan_Type == c("DroughtPlanProcessed")) %>%
+  select(-Plan_Type) 
+
+StateList_DP <- merge(StateList_DPRaw,StateList_DPProc) %>%
+  rename(DP_Present = Plan.1.YES.,
+         DP_Dept = Department,
+         DP_PgCnt = Page_Count,
+         DP_Yr = Year)
+#rm(StateList_DPRaw,StateList_DPProc)
+
+#merge back into a cleaner df
+StateList2 <- merge(StateList_WP,StateList_DP,by=c("State", "State_Abbreviation"))
+
+#quick QC:
+colSums(is.na(StateList2)) #21 each of dept,pgcnt, yr for water plans; #8 each of dept, pgcnt, yr for drought plans; 
+sum(StateList2$WP_Present) #27; 21 missing + .. = 48
+sum(StateList2$DP_Present) #39; 8 missing + .. = 47 #Do we have a drought plan for GA? currently say no but have a dept listed. Also, there's page cnt and years for ND...
+```
+Add on other state characteristics info to dfs
+
+```{r}
+BasicStateInfo <- read.csv("../../../WaterQualAnal/MasterDF/StateInfo.csv")
+ResponseVars <- read.csv("../../../WaterQualAnal/MasterDF/ResponseVars.csv")
+AllPredictors <- read.csv("../../../WaterQualAnal/MasterDF/AllPredictors.csv")
+
+colnames(AllPredictors)
+
+AllPredictors_DP <- AllPredictors %>%
+  select(State, DroughtPlan, DroughtPlan_PgCnt, DroughtPlan_Yr) %>%
+  merge(StateList_DP, by = "State") #same data quality issue
+
+#rm(AllPredictors_DP)
+
+SingleStateDf <- StateList2 %>%
+  left_join(BasicStateInfo, by="State") %>%
+  select(-X) %>%
+  left_join(ResponseVars, by = "State") %>%
+  select(-X) %>%
+  left_join(AllPredictors, by = "State") %>%
+  select(-X)
+
+#rm(BasicStateInfo,ResponseVars,AllPredictors)
+
+#rename columns for understanding
+colnames(SingleStateDf)
+
+SingleStateDf2 <- SingleStateDf %>%
+  select(-Population.Size.y, -DroughtPlan, -DroughtPlan_PgCnt, -DroughtPlan_Yr, #redundant cols
+         -Black..Non.Hispanic.Latino._percent,-Total.Hispanic.Latino..of.any.race._percent, #don't see a reason for ethnicity in cal'ts
+         -White..Non.Hispanic.Latino._percent) %>%
+  rename(LandArea_SqMi = Land.Area_SqMi,
+         TotalArea_SqMi = Total.Area_SqMi,
+         Lat = Latitude_Internal.Point,
+         Lon = Longitude_Internal.Point,
+         EPARegions = EPA.Regions,
+         PopSize = Population.Size.x, #pop demographics vars
+         Age20to34_Percent = Age.20.to.34_percent,
+         Age62plus_Percent = Age.62._percent,
+         MedianAge_years = Median.Age_years,
+         Educ_HSorHigher_Percent = Education..High.School.or.higher_percent, #educ vars
+         Educ_BachorHigher_Percent = Education..Bachelor.s.or.higher_percent,
+         Educ_GradorHigher_Percent = Education..Graduate.or.Professional.degree_percent,
+         GDP_CurrentDollars = Gross.Domestic.Product_CurrentDollars,
+         Y_AWE_ConservationScore = AWE.Conservation.Score, #possible response vars
+         Y_ImpairedLakes_Percent = ImpairedLakes_Percent,
+         Y_ImpairedStreams_Percent = ImpairedStreams_Percent,
+         PrecipInterVar_StdevAnnualMeans = Interannual.Variability..Stdev.of.annual.means., #precip vars
+         PrecipIntraVar_StdevMonthlyMeans = Intraannual.Variability..Stdev.of.monthly.means.,
+         DW_PublicSupply_Percent = Populace.on.public.supply.for.drinking.water_percent, #water infrastructure variables
+         PublicSewer_Percent = Populace.on.Public.Sewer_percent,
+         TotalDamStorage_Acft = Total.Dam.Storage_Ac.ft,
+         CumFedGrants_CWSRF_DWSRF_Dollars = Cumulative.Federal.Grants..CWSRF.and.DWSRF._Dollars, #$ vars
+         WaterPovertyHighAtRisk_PercentStateTracts = WaterPovertyHighAtRisk_.ofTracts,
+         Total_WaterUse_MGD = Total.water.use_MGD, #water use vars
+         Aquaculture_WaterUse_Percent = Percent_Useby_AQUACULTURE,
+         Irrigation_WaterUse_MGD = Percent_Useby_IRRIGATION,                                          
+         Livestock_WaterUse_MGD = Percent_Useby_LIVESTOCK,                                              
+         Mining_WaterUse_MGD = Percent_Useby_MINING,                                            
+         PublicSupply_WaterUse_MGD = Percent_Useby_PUBLIC.SUPPLY,
+         DomesticSS_WaterUse_MGD = Percent_Useby_SELFSUPPLIED_DOMESTIC,                                
+         IndustrialSS_WaterUse_MGD = Percent_Useby_SELFSUPPLIED_INDUSTRIAL,
+         ThermoelectricPower_WaterUse_MGD = Percent_Useby_THERMOELECTRIC.POWER,                                  
+         GW_WaterUse_SalinetoTotal_Percent = Percent_SalinetoTotal_GW,
+         SW_WaterUse_SalinetoTotal_Percent = Percent_SalinetoTotal_SW,                                            
+         All_WaterUse_SalinetoTotal_Percent = Percent_SalinetoTotal_Total,
+         SWtoTotal_WaterUse_Percent = Surface.water.use_percent.of.total.water.use,
+         LU_Cropland_Percent = Land.Use..Cropland_percent, #LU vars
+         LU_Forest_Percent = Land.Use..Forest_percent,
+         LU_Grassland_Percent = Land.Use..Grassland_percent,
+         LU_Urban_Percent = Land.Use..Urban_percent,
+         NetGen_AllFuels_AllUtilProd_thousMwH = Net.generation.by.all.fuels.and.all.utility.scale.producers_thousMWh, #energy vars
+         NetGen_Hydropower_Percent = Net.hydropower.generation_percent,
+         CooksPartisanVoting_Index = Cook.s.Partisan.Voting.Index, #partisan variables
+         StateLeadingParty_Percent = Percentage_State.Leading.Party)
+
+#saveRDS(SingleStateDf2, "StateVars_sansWPParams_DroughtWPIssue.Rds")
+rm(SingleStateDf,StateList,StateList2,StateList_DP,StateList_WP)
+
+#state website survey info on separate rds
+StateWebsiteSurveys <- read.csv("../../../WaterQualAnal/survey_Tushara_LaurelineJosset.csv")
+#saveRDS(StateWebsiteSurveys, "StateWebsite_Surveys_LaurelineJosset.Rds")
+```
+
+
+## Explore corpora
+
+```{r}
+list.files(pattern=".Rds", ignore.case=TRUE)
+
+waterplans_raw <- readRDS("WaterPlanRaw.Rds")
+waterplans_processed <- readRDS("WaterPlanProcessed.Rds")
+
+Droughtplans_raw <- readRDS("DroughtPlanRaw.Rds")
+Droughtplans_processed <- readRDS("DroughtPlanProcessed.Rds")
+
+FinalDF <- readRDS("FinalDataFrame.Rds") %>%
+  filter(!is.na(Plan_Text)) %>%
+  select(-`Plan(1=YES)`) 
+
+unique(FinalDF$Department)
+
+colnames(FinalDF)
+
+#saveRDS(FinalDF, "StatePlans_WaterDrought_RawProcessed.Rds")
+```
+
+
